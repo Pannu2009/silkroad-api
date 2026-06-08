@@ -25,57 +25,59 @@ async function verifyDiscordSignature(request, publicKey) {
   }
 }
 
-// Cloudflare Pages uses "onRequest" functions instead of export default fetch
-export async function onRequest(context) {
-  const { request, env } = context;
-  const url = new URL(request.url);
+// Standard Cloudflare Worker entry point
+export default {
+  async fetch(request, env) {
+    const url = new URL(request.url);
 
-  // 1. GET ROUTE: Roblox loops and pings this url to check for commands
-  if (request.method === "GET") {
-    const data = await env.SILK_ROAD_KV.get("latest_command");
-    if (data) {
-      await env.SILK_ROAD_KV.delete("latest_command"); // Clear queue
-      return new Response(data, { headers: { "Content-Type": "application/json" } });
-    }
-    return new Response("None", { status: 200 });
-  }
-
-  // 2. POST ROUTE: Discord hits this to send Slash Commands or Pings
-  if (request.method === "POST") {
-    const isValid = await verifyDiscordSignature(request, env.DISCORD_PUBLIC_KEY);
-    if (!isValid) return new Response("Invalid request signature", { status: 401 });
-
-    const interaction = await request.json();
-
-    // Type 1 is Discord's security handshake verification ping
-    if (interaction.type === 1) {
-      return new Response(JSON.stringify({ type: 1 }), {
-        headers: { "Content-Type": "application/json" }
-      });
+    // 1. GET ROUTE: Roblox loops and pings this url to check for commands
+    if (request.method === "GET") {
+      const data = await env.SILK_ROAD_KV.get("latest_command");
+      if (data) {
+        await env.SILK_ROAD_KV.delete("latest_command"); // Clear queue
+        return new Response(data, { headers: { "Content-Type": "application/json" } });
+      }
+      return new Response("None", { status: 200 });
     }
 
-    // Type 2 means a user used your slash command
-    if (interaction.type === 2) {
-      const commandName = interaction.data.name;
-      
-      if (commandName === "user") {
-        const targetUser = interaction.data.options[0].value;
+    // 2. POST ROUTE: Discord hits this to send Slash Commands or Pings
+    if (request.method === "POST") {
+      const isValid = await verifyDiscordSignature(request, env.DISCORD_PUBLIC_KEY);
+      if (!isValid) return new Response("Invalid request signature", { status: 401 });
 
-        // Save command to KV database
-        await env.SILK_ROAD_KV.put("latest_command", JSON.stringify({
-          command: "user",
-          targetUser: targetUser
-        }));
+      const interaction = await request.json();
 
-        return new Response(JSON.stringify({
-          type: 4,
-          data: {
-            content: `🔍 **[Silk Road Engine]** Data lookup request sent to live servers. Fetching stats for **${targetUser}**...`
-          }
-        }), { headers: { "Content-Type": "application/json" } });
+      // Type 1 is Discord's security handshake verification ping
+      if (interaction.type === 1) {
+        return new Response(JSON.stringify({ type: 1 }), {
+          headers: { "Content-Type": "application/json" }
+        });
+      }
+
+      // Type 2 means a user used your slash command
+      if (interaction.type === 2) {
+        const commandName = interaction.data.name;
+        
+        if (commandName === "user") {
+          const targetUser = interaction.data.options[0].value;
+
+          // Save command to KV database
+          await env.SILK_ROAD_KV.put("latest_command", JSON.stringify({
+            command: "user",
+            targetUser: targetUser
+          }));
+
+          return new Response(JSON.stringify({
+            type: 4,
+            data: {
+              content: `🔍 **[Silk Road Engine]** Data lookup request sent to live servers. Fetching stats for **${targetUser}**...`
+            }
+          }), { headers: { "Content-Type": "application/json" } });
+        }
       }
     }
-  }
 
-  return new Response("Silk Road Pages Function Operational", { status: 200 });
-}
+    // Default response for typing the link into a browser
+    return new Response("Silk Road Engine Api Operational", { status: 200 });
+  }
+};
