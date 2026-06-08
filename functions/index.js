@@ -30,7 +30,40 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
-    // 1. GET ROUTE: Roblox loops and pings this url to check for commands
+    // 1. REGISTER ROUTE: Visit yoururl.com/register-commands to force update Discord
+    if (url.pathname === "/register-commands") {
+      const commandData = [
+        {
+          name: "user",
+          description: "Fetch stats for a specific user from Journeys of Silk Road",
+          options: [
+            {
+              name: "username",
+              description: "The Roblox player username to look up",
+              type: 3,
+              required: true
+            }
+          ]
+        }
+      ];
+
+      // This finds your application ID directly from your token
+      const applicationId = env.DISCORD_PUBLIC_KEY ? "1451040870689411193" : ""; 
+      
+      const response = await fetch(`https://discord.com/api/v10/applications/${applicationId}/commands`, {
+        method: "PUT",
+        headers: {
+          "Authorization": `Bot ${env.DISCORD_TOKEN}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(commandData)
+      });
+
+      const resText = await response.text();
+      return new Response(`Discord API Response: ${resText}`, { status: response.status });
+    }
+
+    // 2. GET ROUTE: Roblox loops and pings this url to check for commands
     if (request.method === "GET") {
       const data = await env.SILK_ROAD_KV.get("latest_command");
       if (data) {
@@ -40,36 +73,31 @@ export default {
       return new Response("None", { status: 200 });
     }
 
-    // 2. POST ROUTE: Discord hits this to send Slash Commands or Pings
+    // 3. POST ROUTE: Discord hits this to send Slash Commands or Pings
     if (request.method === "POST") {
       const isValid = await verifyDiscordSignature(request, env.DISCORD_PUBLIC_KEY);
       if (!isValid) return new Response("Invalid request signature", { status: 401 });
 
       const interaction = await request.json();
 
-      // Type 1 is Discord's security handshake verification ping
       if (interaction.type === 1) {
         return new Response(JSON.stringify({ type: 1 }), {
           headers: { "Content-Type": "application/json" }
         });
       }
 
-      // Type 2 means a user used your slash command
       if (interaction.type === 2) {
         const commandName = interaction.data.name;
         
         if (commandName === "user") {
-          // Robust checking for option arguments
           const options = interaction.data.options;
           const targetUser = (options && options.length > 0) ? options[0].value : "Unknown Player";
 
-          // Save command metadata payload to your KV database namespace
           await env.SILK_ROAD_KV.put("latest_command", JSON.stringify({
             command: "user",
             targetUser: targetUser
           }));
 
-          // Send an immediate interactive message block back to the channel channel
           return new Response(JSON.stringify({
             type: 4,
             data: {
@@ -80,7 +108,6 @@ export default {
       }
     }
 
-    // Default response for tying the link into a browser
     return new Response("Silk Road Engine Api Operational", { status: 200 });
   }
 };
