@@ -30,7 +30,7 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
-    // 1. REGISTER ROUTE: Visit yoururl.com/register-commands to force update Discord
+    // 1. REGISTER ROUTE: This MUST run first when you visit the link
     if (url.pathname === "/register-commands") {
       const commandData = [
         {
@@ -47,8 +47,7 @@ export default {
         }
       ];
 
-      // This finds your application ID directly from your token
-      const applicationId = env.DISCORD_PUBLIC_KEY ? "1451040870689411193" : ""; 
+      const applicationId = "1451040870689411193"; 
       
       const response = await fetch(`https://discord.com/api/v10/applications/${applicationId}/commands`, {
         method: "PUT",
@@ -63,17 +62,7 @@ export default {
       return new Response(`Discord API Response: ${resText}`, { status: response.status });
     }
 
-    // 2. GET ROUTE: Roblox loops and pings this url to check for commands
-    if (request.method === "GET") {
-      const data = await env.SILK_ROAD_KV.get("latest_command");
-      if (data) {
-        await env.SILK_ROAD_KV.delete("latest_command"); // Clear queue
-        return new Response(data, { headers: { "Content-Type": "application/json" } });
-      }
-      return new Response("None", { status: 200 });
-    }
-
-    // 3. POST ROUTE: Discord hits this to send Slash Commands or Pings
+    // 2. POST ROUTE: Discord hits this to send Slash Commands or Pings
     if (request.method === "POST") {
       const isValid = await verifyDiscordSignature(request, env.DISCORD_PUBLIC_KEY);
       if (!isValid) return new Response("Invalid request signature", { status: 401 });
@@ -106,6 +95,16 @@ export default {
           }), { headers: { "Content-Type": "application/json" } });
         }
       }
+    }
+
+    // 3. GET ROUTE: Roblox loops and pings this url to check for commands
+    if (request.method === "GET") {
+      const data = await env.SILK_ROAD_KV.get("latest_command");
+      if (data) {
+        await env.SILK_ROAD_KV.delete("latest_command"); // Clear queue
+        return new Response(data, { headers: { "Content-Type": "application/json" } });
+      }
+      return new Response("None", { status: 200 });
     }
 
     return new Response("Silk Road Engine Api Operational", { status: 200 });
