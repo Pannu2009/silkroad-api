@@ -1,4 +1,12 @@
 name = "silkroad-api"
 main = "functions/index.js"
 compatibility_date = "2026-06-08"
-compatibility_flags = 
+compatibility_flags = [ "nodejs_compat" ]
+
+[vars]
+DISCORD_PUBLIC_KEY = "d1750e7d16a519b378c90a87bd8c7e41292d80b80c5f768482a54b2eeb2ae9bd"
+
+[[kv_namespaces]]
+binding = "SILK_ROAD_KV"
+id = "YOUR_DATABASE_ID_FROM_CLOUDFLARE"
+
