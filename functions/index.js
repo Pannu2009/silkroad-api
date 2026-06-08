@@ -59,14 +59,17 @@ export default {
         const commandName = interaction.data.name;
         
         if (commandName === "user") {
-          const targetUser = interaction.data.options[0].value;
+          // Robust checking for option arguments
+          const options = interaction.data.options;
+          const targetUser = (options && options.length > 0) ? options[0].value : "Unknown Player";
 
-          // Save command to KV database
+          // Save command metadata payload to your KV database namespace
           await env.SILK_ROAD_KV.put("latest_command", JSON.stringify({
             command: "user",
             targetUser: targetUser
           }));
 
+          // Send an immediate interactive message block back to the channel channel
           return new Response(JSON.stringify({
             type: 4,
             data: {
@@ -77,7 +80,7 @@ export default {
       }
     }
 
-    // Default response for typing the link into a browser
+    // Default response for tying the link into a browser
     return new Response("Silk Road Engine Api Operational", { status: 200 });
   }
 };
