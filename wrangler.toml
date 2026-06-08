@@ -1,0 +1,7 @@
+name = "silkroad-api"
+main = "index.js"
+compatibility_date = "2026-06-08"
+
+[[kv_namespaces]]
+binding = "SILK_ROAD_KV"
+id = "YOUR_KV_NAMESPACE_ID_HERE"
