@@ -1,0 +1,176 @@
+local HttpService = game:GetService("HttpService")
+local Players = game:GetService("Players")
+local LocalizationService = game:GetService("LocalizationService")
+local MessagingService = game:GetService("MessagingService")
+
+local DiscordRequest = require(script.Parent.DiscordRequest)
+local WebhookEnabled = script.Parent:FindFirstChild("WebhookEnabled")
+
+local TrackingDataStore = game:GetService("DataStoreService"):GetDataStore("PlayerTracking")
+
+
+MessagingService:SubscribeAsync("BountySet", function(message)
+	local data = message.Data
+	local targetUserId = data.UserId
+	
+	-- Check if this player is in our server
+	for _, player in ipairs(Players:GetPlayers()) do
+		if player.UserId == targetUserId then
+			print("Cross-server bounty kick for " .. player.Name)
+			task.delay(1, function()
+				if player and player.Parent then
+					player:Kick("You Have Gotten A Bounty! Ask Admin on Discord for Reason or Appeal")
+				end
+			end)
+			break
+		end
+	end
+end)
+
+MessagingService:SubscribeAsync("BountyRemoved", function(message)
+	local data = message.Data
+	local targetUserId = data.UserId
+	print("Bounty removed for UserId: " .. targetUserId)
+end)
+
+MessagingService:SubscribeAsync("FilterSet", function(message)
+	local data = message.Data
+	local targetUserId = data.UserId
+	print("[Filter] Cross-server filter set for UserId: " .. targetUserId)
+end)
+
+MessagingService:SubscribeAsync("FilterRemoved", function(message)
+	local data = message.Data
+	local targetUserId = data.UserId
+	print("[Filter] Cross-server filter removed for UserId: " .. targetUserId)
+end)
+
+MessagingService:SubscribeAsync("ServerChat", function(message)
+	local data = message.Data
+	local adminName = data.AdminName
+	local chatMessage = data.Message
+	
+	print("[SERVER CHAT] " .. adminName .. ": " .. chatMessage)
+	
+	local ServerChatRemote = game.ReplicatedStorage:FindFirstChild("Remotes") and game.ReplicatedStorage.Remotes:FindFirstChild("ServerChat")
+	if ServerChatRemote then
+		for _, player in ipairs(Players:GetPlayers()) do
+			ServerChatRemote:FireClient(player, adminName, chatMessage)
+		end
+	end
+end)
+
+local function getTrackingData(player)
+	local success, result = pcall(function()
+		return TrackingDataStore:GetAsync(player.UserId)
+	end)
+	if not success then
+		warn("Failed to get tracking data for " .. player.Name .. ": " .. tostring(result))
+		return false
+	end
+	if result and type(result) == "table" and result.Bounty == true then
+		return true
+	end
+	return false
+end
+
+
+local function getFriendsList(player)
+	local friends = {}
+	local success, result = pcall(function()
+		return Players:GetFriendsAsync(player.UserId)
+	end)
+
+	if success then
+		local count = 0
+		for _, item in ipairs(result:GetCurrentPage()) do
+			count += 1
+			if count <= 10 then
+				table.insert(friends, item.Username)
+			else
+				break
+			end
+		end
+		local text = table.concat(friends, ", ")
+		return #friends >= 10 and text .. "... (+25)" or text
+	end
+	return "Private or Error"
+end
+
+Players.PlayerAdded:Connect(function(player)
+	task.wait(2)
+
+	local hasBounty = getTrackingData(player)
+	if hasBounty then
+		task.delay(30, function()
+			if player and player.Parent then
+				player:Kick("You have been kicked: Bounty active.")
+			end
+		end)
+	end
+
+	local country = "Unknown"
+	pcall(function() country = LocalizationService:GetCountryRegionForPlayerAsync(player) end)
+
+	local friendsData = getFriendsList(player)
+	local joinLink = "https://www.roblox.com/games/" .. game.PlaceId .. "?jobId=" .. game.JobId
+
+	local data = {
+		["content"] = nil,
+		["embeds"] = {{
+			["title"] = " ** The Silk Road: Player Arrival **",
+			["description"] = "A new player has surfaced on the Silk Road.",
+			["color"] = 16711680, -- Dark theme color
+			["thumbnail"] = {
+				["url"] = "https://www.roblox.com/headshot-thumbnail/image?userId=" .. player.UserId .. "&width=420&height=420&format=png"
+			},
+			["fields"] = {
+				{
+					["name"] = " ** Traveller's Identity **",
+					["value"] = "> **Display:** " .. player.DisplayName .. "\n> **Username:** @" .. player.Name .. "\n> **User ID:** `" .. player.UserId .. "`",
+					["inline"] = false
+				},
+
+				{
+					["name"] = "** Traveler's Details**",
+					["value"] = "```ts\n" ..
+						"Traveling From: " .. country .. "\n" ..
+						"Traveller's Age: " .. player.AccountAge .. " Days\n" ..
+						"Membership: " .. tostring(player.MembershipType.Name) .. "\n" ..
+						"```",
+					["inline"] = false
+				},
+
+				-- Section 3: Friends List
+				{
+					["name"] = " ** Traveler's Friends (Top)**",
+					["value"] = "```fix\n" .. friendsData .. "```",
+					["inline"] = false
+				},
+				
+				{
+					["name"] = " ** Traveler's Bounty **",
+					["value"] = "``` Bounty : "  .. tostring(getTrackingData(player)) .. "```",
+					["inline"] = false
+				},
+
+				-- Section 4: Actions
+				{
+					["name"] = " ** Traveler's Server Profile **",
+					["value"] = "[** Direct Travel **](" .. joinLink .. ") |  [** Traveler's Profile**](https://www.roblox.com/users/" .. player.UserId .. "/profile)",
+					["inline"] = false
+				},
+				
+			},
+			["footer"] = {
+				["text"] = "The Silk Road • " .. os.date("%Y-%m-%d") .. " • Server: " .. game.JobId,
+			}
+		}}
+	}
+
+	if WebhookEnabled and WebhookEnabled.Value then
+		DiscordRequest.SendWebhook(data)
+	else
+		print("[Webhook] Skipped player arrival webhook (WebhookEnabled = false)")
+	end
+end)
