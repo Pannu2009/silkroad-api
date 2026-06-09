@@ -18,7 +18,7 @@ export default {
     const url = new URL(request.url);
     const OWNER_ID = "991408492780986398";
 
-    // 1. REGISTER ROUTE
+    // 1. REGISTER COMMANDS
     if (url.pathname === "/register-commands") {
       const commandData = [
         { name: "finduser", description: "Fetch stats (Owner Only)", options: [{ name: "userid", description: "Target UserID", type: 10, required: true }] },
@@ -56,10 +56,8 @@ export default {
         const inputId = interaction.data.options[0].value.toString();
         const alreadyUsed = await env.SILK_ROAD_KV.get(`USED_${inputId}`);
         if (alreadyUsed) return new Response(JSON.stringify({ type: 4, data: { content: "❌ You have already claimed a reward." } }), { headers: { "Content-Type": "application/json" } });
-
         const playtime = await env.SILK_ROAD_KV.get(`PLAYTIME_${inputId}`);
-        if (!playtime || parseInt(playtime) < 1000) return new Response(JSON.stringify({ type: 4, data: { content: "❌ Not enough playtime (1000s required)." } }), { headers: { "Content-Type": "application/json" } });
-
+        if (!playtime || parseInt(playtime) < 1000) return new Response(JSON.stringify({ type: 4, data: { content: "❌ Not enough playtime." } }), { headers: { "Content-Type": "application/json" } });
         const salt = Math.floor(1000 + Math.random() * 9000);
         const code = `DRB${salt}${inputId}`;
         await env.SILK_ROAD_KV.put(`CODE_${code}`, inputId);
@@ -67,33 +65,39 @@ export default {
       }
       
       if (cmd === "reward") {
-        await env.SILK_ROAD_KV.put("latest_command", JSON.stringify({
-            command: "admin-reward",
-            type: interaction.data.options[0].value,
-            userId: interaction.data.options[1].value,
-            amount: interaction.data.options[2].value
-        }));
+        const commandId = Date.now().toString();
+        const cmdData = { command: "admin-reward", type: interaction.data.options[0].value, userId: interaction.data.options[1].value, amount: interaction.data.options[2].value };
+        await env.SILK_ROAD_KV.put(`CMD_${commandId}`, JSON.stringify(cmdData));
+        const list = JSON.parse(await env.SILK_ROAD_KV.get("CMD_LIST") || "[]");
+        list.push(commandId);
+        await env.SILK_ROAD_KV.put("CMD_LIST", JSON.stringify(list));
         return new Response(JSON.stringify({ type: 4, data: { content: "🎁 Reward queued." } }), { headers: { "Content-Type": "application/json" } });
       }
     }
 
-    // 3. SYNC PLAYTIME
+    // 3. POLL ROUTE (Compatible with coworker's script)
+    if (url.pathname === "/poll") {
+        const list = JSON.parse(await env.SILK_ROAD_KV.get("CMD_LIST") || "[]");
+        if (list.length === 0) return new Response("None", { status: 200 });
+        const cmdId = list.shift();
+        const data = await env.SILK_ROAD_KV.get(`CMD_${cmdId}`);
+        await env.SILK_ROAD_KV.put("CMD_LIST", JSON.stringify(list));
+        await env.SILK_ROAD_KV.delete(`CMD_${cmdId}`);
+        return new Response(data, { headers: { "Content-Type": "application/json" } });
+    }
+
+    // 4. SYNC PLAYTIME
     if (url.pathname === "/sync-playtime") {
-        const userId = url.searchParams.get("userid");
-        const time = url.searchParams.get("time");
-        await env.SILK_ROAD_KV.put(`PLAYTIME_${userId}`, time);
+        await env.SILK_ROAD_KV.put(`PLAYTIME_${url.searchParams.get("userid")}`, url.searchParams.get("time"));
         return new Response("OK", { status: 200 });
     }
 
-    // 4. CHECK CODE
+    // 5. CHECK CODE
     if (url.pathname === "/check-code") {
-        const code = url.searchParams.get("code");
-        const userId = url.searchParams.get("userid");
-        const originalId = await env.SILK_ROAD_KV.get(`CODE_${code}`);
-        
-        if (originalId && originalId === userId) {
-            await env.SILK_ROAD_KV.delete(`CODE_${code}`);
-            await env.SILK_ROAD_KV.put(`USED_${userId}`, "true");
+        const originalId = await env.SILK_ROAD_KV.get(`CODE_${url.searchParams.get("code")}`);
+        if (originalId && originalId === url.searchParams.get("userid")) {
+            await env.SILK_ROAD_KV.delete(`CODE_${url.searchParams.get("code")}`);
+            await env.SILK_ROAD_KV.put(`USED_${url.searchParams.get("userid")}`, "true");
             return new Response("VALID", { status: 200 });
         }
         return new Response("INVALID", { status: 403 });
