@@ -51,7 +51,7 @@ export default {
       const interaction = await request.json();
       if (interaction.type === 1) return new Response(JSON.stringify({ type: 1 }), { headers: { "Content-Type": "application/json" } });
 
-      if (interaction.type === 2 && interaction.data.name === "FindUser") {
+      if (interaction.type === 2 && interaction.data.name === "finduser") {
         const userId = interaction.data.options[0].value;
         await env.SILK_ROAD_KV.put("latest_command", JSON.stringify({
           command: "finduser",
