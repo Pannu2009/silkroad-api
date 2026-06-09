@@ -21,7 +21,7 @@ export default {
     // 1. REGISTER ROUTE: Updated to /FindUser
     if (url.pathname === "/register-commands") {
       const commandData = [{
-        name: "FindUser",
+        name: "finduser",
         description: "Fetch stats for a specific user by ID",
         options: [{ name: "userid", description: "The Roblox player UserID", type: 10, required: true }] // type 10 is for Integer
       }];
