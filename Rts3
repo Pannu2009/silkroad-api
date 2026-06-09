@@ -1,0 +1,47 @@
+local HttpService = game:GetService("HttpService")
+
+local API_URL = "https://silkroad-api.ajay15deep.workers.dev/"
+
+local DiscordRequest = {}
+
+-- Send a Discord webhook embed via the API
+function DiscordRequest.SendWebhook(data)
+	local jsonData = HttpService:JSONEncode(data)
+	local success, err = pcall(function()
+		HttpService:PostAsync(API_URL .. "webhook", jsonData)
+	end)
+	if not success then
+		warn("[DiscordRequest] Webhook failed: " .. tostring(err))
+	end
+	return success
+end
+
+-- Look up a user via the API
+function DiscordRequest.LookupUser(username)
+	local success, result = pcall(function()
+		return HttpService:GetAsync(API_URL .. "user/lookup?username=" .. username)
+	end)
+	if success and result then
+		local ok, decoded = pcall(function()
+			return HttpService:JSONDecode(result)
+		end)
+		if ok then return decoded end
+	end
+	return nil
+end
+
+-- Send filter data to the API for tracking
+function DiscordRequest.SendFilterAlert(filterData)
+	local jsonData = HttpService:JSONEncode(filterData)
+	local success, err = pcall(function()
+		HttpService:PostAsync(API_URL .. "filter", jsonData)
+	end)
+	if not success then
+		warn("[DiscordRequest] Filter alert failed: " .. tostring(err))
+	end
+	return success
+end
+
+DiscordRequest.API_URL = API_URL
+
+return DiscordRequest
