@@ -17,8 +17,8 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     const OWNER_ID = "991408492780986398";
-    const REQUIRED_TIME = 1000;
 
+    // 1. REGISTER COMMANDS
     if (url.pathname === "/register-commands") {
       const commandData = [
         { name: "finduser", description: "Fetch stats (Owner Only)", options: [{ name: "userid", description: "Target UserID", type: 10, required: true }] },
@@ -37,6 +37,7 @@ export default {
       return new Response(await response.text(), { status: response.status });
     }
 
+    // 2. INTERACTION HANDLER (POST)
     if (request.method === "POST") {
       const isValid = await verifyDiscordSignature(request, env.DISCORD_PUBLIC_KEY);
       if (!isValid) return new Response("Unauthorized", { status: 401 });
@@ -47,31 +48,29 @@ export default {
       const userId = interaction.member.user.id;
       const cmd = interaction.data.name;
 
-      // 1. DEFER HEAVY COMMANDS TO FIX TIMEOUT
-      if (cmd === "finduser" || cmd === "verify") {
-        // We include the token so the Roblox server can send a Follow-up message
-        const commandId = Date.now().toString();
-        const cmdData = { command: cmd, userId: interaction.data.options[0].value, token: interaction.token };
-        await env.SILK_ROAD_KV.put(`CMD_${commandId}`, JSON.stringify(cmdData));
-        const list = JSON.parse(await env.SILK_ROAD_KV.get("CMD_LIST") || "[]");
-        list.push(commandId);
-        await env.SILK_ROAD_KV.put("CMD_LIST", JSON.stringify(list));
-        return new Response(JSON.stringify({ type: 5 }), { headers: { "Content-Type": "application/json" } });
+      if ((cmd === "finduser" || cmd === "reward") && userId !== OWNER_ID) {
+        return new Response(JSON.stringify({ type: 4, data: { content: "❌ Access Denied." } }), { headers: { "Content-Type": "application/json" } });
       }
 
-      // 2. ADMIN REWARD (Already fast, keep as is)
-      if (cmd === "reward") {
-        if (userId !== OWNER_ID) return new Response(JSON.stringify({ type: 4, data: { content: "❌ Access Denied." } }), { headers: { "Content-Type": "application/json" } });
-        const commandId = Date.now().toString();
-        const cmdData = { command: "admin-reward", type: interaction.data.options[0].value, userId: interaction.data.options[1].value, amount: interaction.data.options[2].value, token: interaction.token };
-        await env.SILK_ROAD_KV.put(`CMD_${commandId}`, JSON.stringify(cmdData));
-        const list = JSON.parse(await env.SILK_ROAD_KV.get("CMD_LIST") || "[]");
-        list.push(commandId);
-        await env.SILK_ROAD_KV.put("CMD_LIST", JSON.stringify(list));
-        return new Response(JSON.stringify({ type: 4, data: { content: "🎁 Reward queued." } }), { headers: { "Content-Type": "application/json" } });
-      }
+      // DEFER Commands (finduser, verify, reward)
+      const commandId = Date.now().toString();
+      const cmdData = { 
+        command: cmd, 
+        token: interaction.token,
+        userId: interaction.data.options ? interaction.data.options[0].value : null,
+        type: cmd === "reward" ? interaction.data.options[0].value : null,
+        amount: cmd === "reward" ? interaction.data.options[2].value : null
+      };
+      
+      await env.SILK_ROAD_KV.put(`CMD_${commandId}`, JSON.stringify(cmdData));
+      const list = JSON.parse(await env.SILK_ROAD_KV.get("CMD_LIST") || "[]");
+      list.push(commandId);
+      await env.SILK_ROAD_KV.put("CMD_LIST", JSON.stringify(list));
+      
+      return new Response(JSON.stringify({ type: 5 }), { headers: { "Content-Type": "application/json" } });
     }
 
+    // 3. POLL ROUTE
     if (url.pathname === "/poll") {
         const list = JSON.parse(await env.SILK_ROAD_KV.get("CMD_LIST") || "[]");
         if (list.length === 0) return new Response("None", { status: 200 });
@@ -82,11 +81,21 @@ export default {
         return new Response(data, { headers: { "Content-Type": "application/json" } });
     }
 
+    // 4. SYNC & GET PLAYTIME
     if (url.pathname === "/sync-playtime") {
         await env.SILK_ROAD_KV.put(`PLAYTIME_${url.searchParams.get("userid")}`, url.searchParams.get("time"));
         return new Response("OK", { status: 200 });
     }
+    if (url.pathname === "/get-playtime") {
+        const playtime = await env.SILK_ROAD_KV.get(`PLAYTIME_${url.searchParams.get("userid")}`) || "0";
+        return new Response(playtime, { status: 200 });
+    }
 
+    // 5. STORE & CHECK CODE
+    if (url.pathname === "/store-code") {
+        await env.SILK_ROAD_KV.put(`CODE_${url.searchParams.get("code")}`, url.searchParams.get("userid"));
+        return new Response("OK", { status: 200 });
+    }
     if (url.pathname === "/check-code") {
         const originalId = await env.SILK_ROAD_KV.get(`CODE_${url.searchParams.get("code")}`);
         if (originalId && originalId === url.searchParams.get("userid")) {
