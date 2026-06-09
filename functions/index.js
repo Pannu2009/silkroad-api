@@ -54,7 +54,7 @@ export default {
       if (interaction.type === 2 && interaction.data.name === "FindUser") {
         const userId = interaction.data.options[0].value;
         await env.SILK_ROAD_KV.put("latest_command", JSON.stringify({
-          command: "findUser",
+          command: "finduser",
           userId: userId,
           token: interaction.token
         }));
