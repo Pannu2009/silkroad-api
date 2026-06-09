@@ -48,7 +48,7 @@ export default {
     if (request.method === "POST") {
       const isValid = await verifyDiscordSignature(request, env.DISCORD_PUBLIC_KEY);
       if (!isValid) return new Response("Unauthorized", { status: 401 });
-      const interaction = await interaction = await request.json();
+      const interaction = await request.json();
       if (interaction.type === 1) return new Response(JSON.stringify({ type: 1 }), { headers: { "Content-Type": "application/json" } });
 
       if (interaction.type === 2 && interaction.data.name === "FindUser") {
