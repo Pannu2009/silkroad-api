@@ -24,7 +24,8 @@ export default {
         { name: "finduser", description: "Fetch stats (Owner Only)", options: [{ name: "userid", description: "Target UserID", type: 10, required: true }] },
         { name: "reward", description: "Admin reward (Owner Only)", options: [
             { name: "type", description: "Reward", type: 3, required: true, choices: [{name: "Dinars", value: "dinars"}, {name: "XP", value: "xp"}] },
-            { name: "userid", description: "Target UserID", type: 10, required: true }
+            { name: "userid", description: "Target UserID", type: 10, required: true },
+            { name: "amount", description: "Quantity", type: 10, required: true }
         ]},
         { name: "verify", description: "Get your reward code", options: [{ name: "userid", description: "Your UserID", type: 10, required: true }] }
       ];
@@ -47,42 +48,44 @@ export default {
       const userId = interaction.member.user.id;
       const cmd = interaction.data.name;
 
-      // OWNER GATING
       if ((cmd === "finduser" || cmd === "reward") && userId !== OWNER_ID) {
         return new Response(JSON.stringify({ type: 4, data: { content: "❌ Access Denied." } }), { headers: { "Content-Type": "application/json" } });
       }
 
-      // VERIFY COMMAND
       if (cmd === "verify") {
         const inputId = interaction.data.options[0].value.toString();
-        
-        // Check if ALREADY USED
         const alreadyUsed = await env.SILK_ROAD_KV.get(`USED_${inputId}`);
         if (alreadyUsed) return new Response(JSON.stringify({ type: 4, data: { content: "❌ You have already claimed a reward." } }), { headers: { "Content-Type": "application/json" } });
 
-        // Check Playtime
         const playtime = await env.SILK_ROAD_KV.get(`PLAYTIME_${inputId}`);
         if (!playtime || parseInt(playtime) < 1000) return new Response(JSON.stringify({ type: 4, data: { content: "❌ Not enough playtime (1000s required)." } }), { headers: { "Content-Type": "application/json" } });
 
         const salt = Math.floor(1000 + Math.random() * 9000);
         const code = `DRB${salt}${inputId}`;
         await env.SILK_ROAD_KV.put(`CODE_${code}`, inputId);
-        
         return new Response(JSON.stringify({ type: 4, data: { content: `✅ Your code: **${code}**` } }), { headers: { "Content-Type": "application/json" } });
       }
       
-      // REWARD COMMAND (Queuing for Roblox)
       if (cmd === "reward") {
         await env.SILK_ROAD_KV.put("latest_command", JSON.stringify({
             command: "admin-reward",
             type: interaction.data.options[0].value,
-            userId: interaction.data.options[1].value
+            userId: interaction.data.options[1].value,
+            amount: interaction.data.options[2].value
         }));
         return new Response(JSON.stringify({ type: 4, data: { content: "🎁 Reward queued." } }), { headers: { "Content-Type": "application/json" } });
       }
     }
 
-    // 3. CHECK CODE (Roblox endpoint)
+    // 3. SYNC PLAYTIME
+    if (url.pathname === "/sync-playtime") {
+        const userId = url.searchParams.get("userid");
+        const time = url.searchParams.get("time");
+        await env.SILK_ROAD_KV.put(`PLAYTIME_${userId}`, time);
+        return new Response("OK", { status: 200 });
+    }
+
+    // 4. CHECK CODE
     if (url.pathname === "/check-code") {
         const code = url.searchParams.get("code");
         const userId = url.searchParams.get("userid");
