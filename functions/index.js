@@ -125,7 +125,7 @@ export default {
         }
 
         // Example for your base URL response
-return new Response("<h1>Welcome to the Silk Road API, Joy fuck off</h1>", { 
+return new Response("<h1>Welcome to the Silk Road API, Joy how $ per liter price bro</h1>", { 
     headers: { "Content-Type": "text/html" }, 
     status: 200 
 });
