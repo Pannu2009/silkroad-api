@@ -124,6 +124,10 @@ export default {
             return new Response("INVALID", { status: 403 });
         }
 
-        return new Response("how much liter milk joy gives <7> <6> <1> ", { status: 200 });
-    }
+        // Example for your base URL response
+return new Response("<h1>Welcome to the Silk Road API, Joy fuck off</h1>", { 
+    headers: { "Content-Type": "text/html" }, 
+    status: 200 
+});
+
 };
