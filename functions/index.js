@@ -92,10 +92,15 @@ export default {
     }
 
     // 5. STORE & CHECK CODE
+    // In your index.js, inside the /store-code route:
     if (url.pathname === "/store-code") {
-        await env.SILK_ROAD_KV.put(`CODE_${url.searchParams.get("code")}`, url.searchParams.get("userid"));
-        return new Response("OK", { status: 200 });
+    const code = url.searchParams.get("code");
+    const userId = url.searchParams.get("userid");
+    // {expirationTtl: 600} makes it expire in 10 minutes (600 seconds)
+    await env.SILK_ROAD_KV.put(`CODE_${code}`, userId, { expirationTtl: 600 });
+    return new Response("OK", { status: 200 });
     }
+
     if (url.pathname === "/check-code") {
         const originalId = await env.SILK_ROAD_KV.get(`CODE_${url.searchParams.get("code")}`);
         if (originalId && originalId === url.searchParams.get("userid")) {
