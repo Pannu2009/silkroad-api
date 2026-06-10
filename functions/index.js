@@ -92,14 +92,26 @@ export default {
     }
 
     // 5. STORE & CHECK CODE
-    // In your index.js, inside the /store-code route:
-    if (url.pathname === "/store-code") {
+    // In your index.js, inside the /store-code 
+    // Add this inside your index.js fetch function:
+
+if (url.pathname === "/check-existing-code") {
+    const userId = url.searchParams.get("userid");
+    // We need a way to find a code by userId. 
+    // Best way: When storing, store ALSO as CODE_BY_USER_{userId} = {code}
+    const existingCode = await env.SILK_ROAD_KV.get(`CODE_BY_USER_${userId}`);
+    return new Response(existingCode || "None", { status: 200 });
+}
+
+// In your /store-code route, update it to store both ways:
+if (url.pathname === "/store-code") {
     const code = url.searchParams.get("code");
     const userId = url.searchParams.get("userid");
-    // {expirationTtl: 600} makes it expire in 10 minutes (600 seconds)
     await env.SILK_ROAD_KV.put(`CODE_${code}`, userId, { expirationTtl: 600 });
+    await env.SILK_ROAD_KV.put(`CODE_BY_USER_${userId}`, code, { expirationTtl: 600 });
     return new Response("OK", { status: 200 });
-    }
+}
+
 
     if (url.pathname === "/check-code") {
         const originalId = await env.SILK_ROAD_KV.get(`CODE_${url.searchParams.get("code")}`);
