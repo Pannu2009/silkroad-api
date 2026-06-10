@@ -129,5 +129,5 @@ return new Response("<h1>Welcome to the Silk Road API, Joy how $ per liter price
     headers: { "Content-Type": "text/html" }, 
     status: 200 
 });
-
+    }
 };
