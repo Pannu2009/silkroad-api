@@ -71,15 +71,27 @@ export default {
     }
 
     // 3. POLL ROUTE
-    if (url.pathname === "/poll") {
-        const list = JSON.parse(await env.SILK_ROAD_KV.get("CMD_LIST") || "[]");
-        if (list.length === 0) return new Response("None", { status: 200 });
+    // In your Worker's /poll route:
+if (url.pathname === "/poll") {
+    const list = JSON.parse(await env.SILK_ROAD_KV.get("CMD_LIST") || "[]");
+    
+    // Only return the command if the list is NOT empty
+    if (list.length > 0) {
         const cmdId = list.shift();
         const data = await env.SILK_ROAD_KV.get(`CMD_${cmdId}`);
+        
+        // Update the list and delete the command
         await env.SILK_ROAD_KV.put("CMD_LIST", JSON.stringify(list));
         await env.SILK_ROAD_KV.delete(`CMD_${cmdId}`);
+        
         return new Response(data, { headers: { "Content-Type": "application/json" } });
     }
+    
+    // If no command, return a 204 (No Content) instead of "None" to save bandwidth
+    return new Response(null, { status: 204 });
+}
+
+    
 
     // 4. SYNC & GET PLAYTIME
     if (url.pathname === "/sync-playtime") {
