@@ -18,6 +18,192 @@ function getOption(options, name) {
     return opt ? opt.value : null;
 }
 
+const SILK_ROAD_HTML = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Silk Road — API Manifest</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  :root{
+    --night: #1a1f2e;
+    --ink: #0d0f14;
+    --sand: #d4a574;
+    --parchment: #e8dcc8;
+    --vermilion: #c1502e;
+  }
+
+  *{ box-sizing:border-box; margin:0; padding:0; }
+
+  body{
+    background: var(--ink);
+    background-image:
+      radial-gradient(ellipse at 20% 0%, rgba(212,165,116,0.08), transparent 60%),
+      radial-gradient(ellipse at 80% 100%, rgba(193,80,46,0.06), transparent 60%);
+    color: var(--parchment);
+    font-family: 'JetBrains Mono', monospace;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 5vh 6vw;
+  }
+
+  .manifest{
+    max-width: 760px;
+    width: 100%;
+  }
+
+  .route-line{
+    display:flex;
+    align-items:center;
+    gap: 10px;
+    margin-bottom: 2.2rem;
+    color: var(--sand);
+    font-size: 0.72rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    opacity: 0.75;
+  }
+  .route-line::before, .route-line::after{
+    content:"";
+    flex:1;
+    height:1px;
+    background: linear-gradient(90deg, transparent, var(--sand), transparent);
+    opacity: 0.4;
+  }
+
+  h1{
+    font-family: 'Fraunces', serif;
+    font-weight: 600;
+    font-size: clamp(2.6rem, 7vw, 4.4rem);
+    line-height: 1.02;
+    color: var(--parchment);
+    letter-spacing: -0.01em;
+  }
+  h1 em{
+    font-style: italic;
+    color: var(--sand);
+  }
+
+  .tagline{
+    margin-top: 1.1rem;
+    font-size: 0.95rem;
+    color: var(--parchment);
+    opacity: 0.62;
+    max-width: 46ch;
+    line-height: 1.6;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  .seal{
+    margin-top: 3rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.7rem;
+    padding: 0.85rem 1.3rem;
+    border: 1px solid rgba(212,165,116,0.35);
+    border-radius: 999px;
+    background: rgba(212,165,116,0.05);
+  }
+
+  .dot{
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #5fbf7a;
+    box-shadow: 0 0 0 0 rgba(95,191,122,0.6);
+    animation: pulse 2.2s infinite;
+  }
+  @keyframes pulse{
+    0%{ box-shadow: 0 0 0 0 rgba(95,191,122,0.55); }
+    70%{ box-shadow: 0 0 0 8px rgba(95,191,122,0); }
+    100%{ box-shadow: 0 0 0 0 rgba(95,191,122,0); }
+  }
+
+  .seal-text{
+    font-size: 0.74rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--parchment);
+    opacity: 0.85;
+  }
+  .seal-text b{ color:#5fbf7a; font-weight:500; }
+
+  .ledger{
+    margin-top: 3.4rem;
+    border-top: 1px solid rgba(212,165,116,0.18);
+    padding-top: 1.8rem;
+  }
+  .ledger-label{
+    font-size: 0.66rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--vermilion);
+    opacity: 0.85;
+    margin-bottom: 1rem;
+  }
+
+  .routes{
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 0.4rem 1.5rem;
+  }
+  .route{
+    display:flex;
+    justify-content: space-between;
+    padding: 0.6rem 0;
+    border-bottom: 1px dashed rgba(232,220,200,0.08);
+    font-size: 0.82rem;
+  }
+  .route-name{ color: var(--parchment); opacity: 0.9; }
+  .route-status{ color: var(--sand); opacity: 0.6; font-size: 0.74rem; }
+
+  footer{
+    margin-top: 3rem;
+    font-size: 0.7rem;
+    color: var(--parchment);
+    opacity: 0.35;
+    letter-spacing: 0.05em;
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    .dot{ animation: none; }
+  }
+</style>
+</head>
+<body>
+  <main class="manifest">
+    <div class="route-line">Caravan Manifest</div>
+
+    <h1>The <em>Silk Road</em><br>API</h1>
+    <p class="tagline">Backend trade routes for the realm — handling player data, currency sync, and Discord caravan dispatches.</p>
+
+    <div class="seal">
+      <span class="dot"></span>
+      <span class="seal-text">Route status: <b>open</b></span>
+    </div>
+
+    <div class="ledger">
+      <div class="ledger-label">Active Checkpoints</div>
+      <div class="routes">
+        <div class="route"><span class="route-name">/poll</span><span class="route-status">dispatch queue</span></div>
+        <div class="route"><span class="route-name">/sync-playtime</span><span class="route-status">caravan log</span></div>
+        <div class="route"><span class="route-name">/get-playtime</span><span class="route-status">caravan log</span></div>
+        <div class="route"><span class="route-name">/check-existing-code</span><span class="route-status">seal registry</span></div>
+        <div class="route"><span class="route-name">/store-code</span><span class="route-status">seal registry</span></div>
+        <div class="route"><span class="route-name">/check-code</span><span class="route-status">seal registry</span></div>
+      </div>
+    </div>
+
+    <footer>dakait.online — operated by Panth Riar, Dakait Shah</footer>
+  </main>
+</body>
+</html>
+`;
+
 export default {
     async fetch(request, env) {
         const url = new URL(request.url);
@@ -124,10 +310,10 @@ export default {
             return new Response("INVALID", { status: 403 });
         }
 
-        // Example for your base URL response
-return new Response("<h1>Welcome to the Silk Road API, Panth riar , Dakait Shah</h1>", { 
-    headers: { "Content-Type": "text/html" }, 
-    status: 200 
-});
+        // Base URL response — Silk Road landing page
+        return new Response(SILK_ROAD_HTML, {
+            headers: { "Content-Type": "text/html" },
+            status: 200
+        });
     }
 };
