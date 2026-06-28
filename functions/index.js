@@ -53,7 +53,7 @@ const SILK_ROAD_HTML = `<!DOCTYPE html>
     justify-content:center;
   }
 
-  .manifest{ max-width: 760px; width: 100%; }
+  .manifest{ max-width: 760px; width: 100%; position: relative; z-index: 1; }
 
   .route-line{
     display:flex; align-items:center; gap: 10px;
@@ -169,7 +169,9 @@ const SILK_ROAD_HTML = `<!DOCTYPE html>
     padding: 0.6rem 0;
     border-bottom: 1px dashed rgba(232,220,200,0.08);
     font-size: 0.82rem;
+    transition: padding-left 0.25s ease, border-color 0.25s ease;
   }
+  .route:hover{ padding-left: 0.4rem; border-color: rgba(212,165,116,0.3); }
   .route-name{ opacity: 0.9; }
   .route-status{ color: var(--sand); opacity: 0.6; font-size: 0.74rem; }
 
@@ -179,6 +181,12 @@ const SILK_ROAD_HTML = `<!DOCTYPE html>
     border-radius: 10px;
     padding: 1.4rem 1.6rem;
     background: rgba(232,220,200,0.02);
+    transition: transform 0.3s ease, border-color 0.3s ease, background 0.3s ease;
+  }
+  .crew-card:hover{
+    transform: translateY(-3px);
+    border-color: rgba(212,165,116,0.4);
+    background: rgba(232,220,200,0.04);
   }
   .crew-name{ font-family: 'Fraunces', serif; font-size: 1.25rem; color: var(--sand); margin-bottom: 0.3rem; }
   .crew-role{ font-size: 0.68rem; letter-spacing: 0.1em; text-transform: uppercase; opacity: 0.55; margin-bottom: 0.8rem; }
@@ -231,7 +239,6 @@ const SILK_ROAD_HTML = `<!DOCTYPE html>
   .load-in.d1{ animation-delay: 0.05s; }
   .load-in.d2{ animation-delay: 0.2s; }
   .load-in.d3{ animation-delay: 0.35s; }
-  .load-in.d4{ animation-delay: 0.5s; }
 
   .reveal{
     opacity: 0;
@@ -249,18 +256,6 @@ const SILK_ROAD_HTML = `<!DOCTYPE html>
     z-index: 0;
     opacity: 0.5;
   }
-
-  .manifest{ position: relative; z-index: 1; }
-
-  .crew-card{ transition: transform 0.3s ease, border-color 0.3s ease, background 0.3s ease; }
-  .crew-card:hover{
-    transform: translateY(-3px);
-    border-color: rgba(212,165,116,0.4);
-    background: rgba(232,220,200,0.04);
-  }
-
-  .route{ transition: padding-left 0.25s ease, border-color 0.25s ease; }
-  .route:hover{ padding-left: 0.4rem; border-color: rgba(212,165,116,0.3); }
 
   @media (prefers-reduced-motion: reduce){
     .dot{ animation: none; }
@@ -307,6 +302,7 @@ const SILK_ROAD_HTML = `<!DOCTYPE html>
         <div class="route"><span class="route-name">/store-code</span><span class="route-status">seal registry</span></div>
         <div class="route"><span class="route-name">/check-code</span><span class="route-status">seal registry</span></div>
         <div class="route"><span class="route-name">/register-commands</span><span class="route-status">Discord setup</span></div>
+        <div class="route"><a href="/scripts" class="route-name">/scripts</a><span class="route-status">public loot drop</span></div>
       </div>
     </section>
 
@@ -348,7 +344,6 @@ const SILK_ROAD_HTML = `<!DOCTYPE html>
       btn.querySelector('span').textContent = isOpen ? 'Less detail' : 'More about this route';
     }
 
-    // Scroll reveal
     const revealEls = document.querySelectorAll('.reveal');
     const observer = new IntersectionObserver((entries) => {
       entries.forEach(entry => {
@@ -360,7 +355,6 @@ const SILK_ROAD_HTML = `<!DOCTYPE html>
     }, { threshold: 0.15 });
     revealEls.forEach(el => observer.observe(el));
 
-    // Ambient drifting dust (subtle, desert-night feel)
     const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     if (!prefersReducedMotion){
       const canvas = document.getElementById('dust');
@@ -408,10 +402,561 @@ const SILK_ROAD_HTML = `<!DOCTYPE html>
 </html>
 `;
 
+/* ───────────────────────── Scripts page (KV-backed) ───────────────────────── */
+
+const SCRIPTS_INDEX_KEY = "scripts:index";
+const MAX_CODE_LENGTH = 20000;
+const MAX_TITLE_LENGTH = 120;
+const MAX_DESC_LENGTH = 500;
+const MAX_USERNAME_LENGTH = 40;
+
+function jsonResponse(data, status = 200) {
+    return new Response(JSON.stringify(data), {
+        status,
+        headers: { "Content-Type": "application/json" },
+    });
+}
+
+function sanitizeText(value, maxLen) {
+    if (typeof value !== "string") return "";
+    return value.trim().slice(0, maxLen);
+}
+
+async function getScriptsIndex(env) {
+    const raw = await env.SCRIPTS_KV.get(SCRIPTS_INDEX_KEY);
+    return raw ? JSON.parse(raw) : [];
+}
+
+async function saveScriptsIndex(env, index) {
+    await env.SCRIPTS_KV.put(SCRIPTS_INDEX_KEY, JSON.stringify(index));
+}
+
+const SCRIPTS_HTML = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Scripts — dakait.online</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600;700&display=swap');
+
+  :root {
+    --bg: #0c0d10;
+    --panel: #14161b;
+    --panel-line: #232631;
+    --text: #e8e9ed;
+    --muted: #8b8f9c;
+    --accent: #ffb238;
+    --accent-dim: #6b5326;
+    --danger: #ff5d5d;
+    --mono: 'JetBrains Mono', monospace;
+    --sans: 'Inter', sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    line-height: 1.5;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+
+  .wrap {
+    max-width: 920px;
+    margin: 0 auto;
+    padding: 32px 20px 80px;
+  }
+
+  header.page-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+  }
+
+  .brand {
+    font-family: var(--mono);
+    font-weight: 700;
+    font-size: 14px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .brand a { color: var(--muted); text-decoration: none; }
+  .brand span { color: var(--accent); }
+
+  h1 {
+    font-family: var(--mono);
+    font-size: clamp(28px, 5vw, 40px);
+    font-weight: 700;
+    margin: 4px 0 6px;
+    letter-spacing: -0.01em;
+  }
+  h1 .stamp {
+    display: inline-block;
+    border: 2px solid var(--accent);
+    color: var(--accent);
+    font-size: 0.4em;
+    padding: 3px 8px;
+    border-radius: 3px;
+    transform: rotate(-3deg);
+    vertical-align: middle;
+    margin-left: 10px;
+    letter-spacing: 0.08em;
+  }
+
+  .tagline {
+    color: var(--muted);
+    font-size: 15px;
+    margin-bottom: 28px;
+    max-width: 56ch;
+  }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--panel-line);
+    border-radius: 10px;
+    padding: 22px;
+    margin-bottom: 36px;
+  }
+  .panel-title {
+    font-family: var(--mono);
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--accent);
+    margin: 0 0 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .panel-title::before { content: "▸"; }
+
+  label {
+    display: block;
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 6px;
+    margin-top: 14px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  label:first-of-type { margin-top: 0; }
+
+  input[type="text"], textarea {
+    width: 100%;
+    background: #0a0b0e;
+    border: 1px solid var(--panel-line);
+    border-radius: 6px;
+    color: var(--text);
+    padding: 10px 12px;
+    font-family: var(--sans);
+    font-size: 14px;
+  }
+  textarea#code {
+    font-family: var(--mono);
+    font-size: 13px;
+    min-height: 140px;
+    resize: vertical;
+  }
+  input:focus, textarea:focus {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+
+  .row { display: flex; gap: 14px; flex-wrap: wrap; }
+  .row > div { flex: 1; min-width: 180px; }
+
+  .submit-btn {
+    margin-top: 18px;
+    background: var(--accent);
+    color: #1a1305;
+    border: none;
+    font-family: var(--mono);
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding: 11px 20px;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  .submit-btn:hover { background: #ffc561; }
+  .submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .form-msg { font-size: 13px; margin-top: 10px; min-height: 18px; }
+  .form-msg.error { color: var(--danger); }
+  .form-msg.ok { color: #5cd98a; }
+
+  .list-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 14px;
+  }
+  .list-head h2 {
+    font-family: var(--mono);
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+    margin: 0;
+  }
+  .count { font-family: var(--mono); font-size: 12px; color: var(--accent-dim); }
+
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--panel-line);
+    border-radius: 10px;
+    padding: 18px 18px 16px;
+    margin-bottom: 14px;
+    position: relative;
+  }
+  .card-tag {
+    position: absolute;
+    top: -9px;
+    right: 16px;
+    background: var(--bg);
+    border: 1px solid var(--accent-dim);
+    color: var(--accent);
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    padding: 2px 8px;
+    border-radius: 4px;
+  }
+  .card-title { font-weight: 700; font-size: 15px; margin: 0 0 4px; padding-right: 70px; }
+  .card-desc { color: var(--muted); font-size: 13.5px; margin: 0 0 12px; }
+
+  pre.code-block {
+    background: #0a0b0e;
+    border: 1px solid var(--panel-line);
+    border-radius: 6px;
+    padding: 12px 14px;
+    overflow-x: auto;
+    font-family: var(--mono);
+    font-size: 12.5px;
+    color: #c9e6c4;
+    margin: 0 0 12px;
+    max-height: 220px;
+  }
+
+  .card-foot {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .card-foot .user { font-family: var(--mono); }
+  .card-foot .user::before { content: "@"; color: var(--accent); }
+
+  .copy-btn {
+    background: transparent;
+    border: 1px solid var(--panel-line);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 6px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  .copy-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .copy-btn.copied { border-color: #5cd98a; color: #5cd98a; }
+
+  .empty {
+    text-align: center;
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 13px;
+    padding: 40px 0;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="page-head">
+    <div class="brand"><a href="/">dakait<span>.online</span></a></div>
+  </header>
+
+  <h1>Scripts<span class="stamp">loot drop</span></h1>
+  <p class="tagline">Drop a script. Take a script. No accounts, no gatekeeping — just paste it and someone else copies it.</p>
+
+  <section class="panel">
+    <p class="panel-title">Upload a script</p>
+    <form id="upload-form">
+      <label for="title">Title</label>
+      <input type="text" id="title" maxlength="120" required placeholder="e.g. Auto-clicker for X" />
+
+      <div class="row">
+        <div>
+          <label for="username">Your name / handle</label>
+          <input type="text" id="username" maxlength="40" placeholder="anonymous" />
+        </div>
+      </div>
+
+      <label for="description">Description</label>
+      <textarea id="description" maxlength="500" rows="2" placeholder="What does it do, where does it work, anything to know before using it?"></textarea>
+
+      <label for="code">Script code</label>
+      <textarea id="code" required placeholder="Paste your code here"></textarea>
+
+      <button type="submit" class="submit-btn">Drop it</button>
+      <p class="form-msg" id="form-msg"></p>
+    </form>
+  </section>
+
+  <div class="list-head">
+    <h2>Latest drops</h2>
+    <span class="count" id="count"></span>
+  </div>
+
+  <div id="list"></div>
+</div>
+
+<script>
+  const API_BASE = "";
+
+  const listEl = document.getElementById("list");
+  const countEl = document.getElementById("count");
+  const formMsg = document.getElementById("form-msg");
+  const form = document.getElementById("upload-form");
+
+  function escapeHtml(str) {
+    return str.replace(/[&<>"']/g, (c) => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+    }[c]));
+  }
+
+  function timeAgo(ts) {
+    const s = Math.floor((Date.now() - ts) / 1000);
+    if (s < 60) return "just now";
+    if (s < 3600) return Math.floor(s / 60) + "m ago";
+    if (s < 86400) return Math.floor(s / 3600) + "h ago";
+    return Math.floor(s / 86400) + "d ago";
+  }
+
+  async function loadScripts() {
+    listEl.innerHTML = '<p class="empty">Loading…</p>';
+    try {
+      const res = await fetch(\`\${API_BASE}/api/scripts\`);
+      const data = await res.json();
+      const scripts = data.scripts || [];
+      countEl.textContent = scripts.length + (scripts.length === 1 ? " script" : " scripts");
+
+      if (scripts.length === 0) {
+        listEl.innerHTML = '<p class="empty">Nothing dropped yet. Be the first.</p>';
+        return;
+      }
+
+      listEl.innerHTML = "";
+      scripts.forEach((meta, i) => {
+        const card = document.createElement("div");
+        card.className = "card";
+        card.innerHTML = \`
+          <span class="card-tag">#\${String(scripts.length - i).padStart(3, "0")}</span>
+          <p class="card-title">\${escapeHtml(meta.title)}</p>
+          <p class="card-desc">\${escapeHtml(meta.description || "")}</p>
+          <pre class="code-block" id="code-\${meta.id}">loading…</pre>
+          <div class="card-foot">
+            <span class="user">\${escapeHtml(meta.username)} · \${timeAgo(meta.createdAt)}</span>
+            <button class="copy-btn" data-id="\${meta.id}">Copy</button>
+          </div>
+        \`;
+        listEl.appendChild(card);
+        loadFullScript(meta.id);
+      });
+
+      listEl.querySelectorAll(".copy-btn").forEach((btn) => {
+        btn.addEventListener("click", () => copyScript(btn));
+      });
+    } catch (err) {
+      listEl.innerHTML = '<p class="empty">Couldn\\'t load scripts. Check your connection and try again.</p>';
+    }
+  }
+
+  const fullCache = {};
+
+  async function loadFullScript(id) {
+    try {
+      const res = await fetch(\`\${API_BASE}/api/scripts/\${id}\`);
+      const data = await res.json();
+      fullCache[id] = data.script.code;
+      const pre = document.getElementById(\`code-\${id}\`);
+      if (pre) pre.textContent = data.script.code;
+    } catch {
+      const pre = document.getElementById(\`code-\${id}\`);
+      if (pre) pre.textContent = "// failed to load code";
+    }
+  }
+
+  async function copyScript(btn) {
+    const id = btn.dataset.id;
+    const code = fullCache[id];
+    if (!code) return;
+    try {
+      await navigator.clipboard.writeText(code);
+      btn.textContent = "Copied";
+      btn.classList.add("copied");
+      setTimeout(() => {
+        btn.textContent = "Copy";
+        btn.classList.remove("copied");
+      }, 1500);
+    } catch {
+      btn.textContent = "Press Ctrl+C";
+    }
+  }
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    formMsg.textContent = "";
+    formMsg.className = "form-msg";
+
+    const title = document.getElementById("title").value.trim();
+    const username = document.getElementById("username").value.trim();
+    const description = document.getElementById("description").value.trim();
+    const code = document.getElementById("code").value;
+
+    if (!title || !code.trim()) {
+      formMsg.textContent = "Title and script code are required.";
+      formMsg.className = "form-msg error";
+      return;
+    }
+
+    const submitBtn = form.querySelector(".submit-btn");
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Dropping…";
+
+    try {
+      const res = await fetch(\`\${API_BASE}/api/scripts\`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title, username, description, code }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Upload failed");
+      }
+      formMsg.textContent = "Dropped. Scroll down to see it.";
+      formMsg.className = "form-msg ok";
+      form.reset();
+      loadScripts();
+    } catch (err) {
+      formMsg.textContent = err.message || "Something went wrong. Try again.";
+      formMsg.className = "form-msg error";
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Drop it";
+    }
+  });
+
+  loadScripts();
+</script>
+</body>
+</html>
+`;
+
+async function handleScriptsApi(request, env, path) {
+    const method = request.method;
+    const url = new URL(request.url);
+
+    if (method === "OPTIONS") {
+        return new Response(null, {
+            status: 204,
+            headers: {
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "GET,POST,DELETE,OPTIONS",
+                "Access-Control-Allow-Headers": "Content-Type",
+            },
+        });
+    }
+
+    if (path === "/api/scripts" && method === "GET") {
+        const index = await getScriptsIndex(env);
+        const sorted = [...index].sort((a, b) => b.createdAt - a.createdAt);
+        return jsonResponse({ scripts: sorted });
+    }
+
+    if (path === "/api/scripts" && method === "POST") {
+        let body;
+        try {
+            body = await request.json();
+        } catch {
+            return jsonResponse({ error: "Invalid JSON body" }, 400);
+        }
+
+        const title = sanitizeText(body.title, MAX_TITLE_LENGTH);
+        const description = sanitizeText(body.description, MAX_DESC_LENGTH);
+        const username = sanitizeText(body.username, MAX_USERNAME_LENGTH) || "anonymous";
+        const code = typeof body.code === "string" ? body.code.slice(0, MAX_CODE_LENGTH) : "";
+
+        if (!title || !code) {
+            return jsonResponse({ error: "title and code are required" }, 400);
+        }
+
+        const id = crypto.randomUUID();
+        const createdAt = Date.now();
+        const record = { id, title, description, username, code, createdAt };
+
+        await env.SCRIPTS_KV.put(`script:${id}`, JSON.stringify(record));
+
+        const index = await getScriptsIndex(env);
+        index.push({ id, title, description, username, createdAt, length: code.length });
+        await saveScriptsIndex(env, index);
+
+        return jsonResponse({ script: record }, 201);
+    }
+
+    const singleMatch = path.match(/^\/api\/scripts\/([a-zA-Z0-9-]+)$/);
+    if (singleMatch && method === "GET") {
+        const id = singleMatch[1];
+        const raw = await env.SCRIPTS_KV.get(`script:${id}`);
+        if (!raw) return jsonResponse({ error: "Not found" }, 404);
+        return jsonResponse({ script: JSON.parse(raw) });
+    }
+
+    if (singleMatch && method === "DELETE") {
+        const id = singleMatch[1];
+        const key = url.searchParams.get("key");
+        if (!env.DELETE_KEY || key !== env.DELETE_KEY) {
+            return jsonResponse({ error: "Unauthorized" }, 401);
+        }
+        await env.SCRIPTS_KV.delete(`script:${id}`);
+        const index = await getScriptsIndex(env);
+        await saveScriptsIndex(env, index.filter((s) => s.id !== id));
+        return jsonResponse({ deleted: id });
+    }
+
+    return jsonResponse({ error: "Not found" }, 404);
+}
+
+/* ───────────────────────── Main fetch handler ───────────────────────── */
+
 export default {
     async fetch(request, env) {
         const url = new URL(request.url);
         const OWNER_ID = "991408492780986398";
+        const path = url.pathname;
+
+        // Scripts page + its API
+        if (path === "/scripts" || path === "/scripts/") {
+            return new Response(SCRIPTS_HTML, {
+                headers: { "Content-Type": "text/html" },
+                status: 200,
+            });
+        }
+        if (path.startsWith("/api/scripts")) {
+            const resp = await handleScriptsApi(request, env, path);
+            resp.headers.set("Access-Control-Allow-Origin", "*");
+            return resp;
+        }
 
         if (url.pathname === "/register-commands") {
             const commandData = [
@@ -514,4 +1059,3 @@ export default {
         });
     }
 };
-
