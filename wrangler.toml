@@ -5,9 +5,11 @@ compatibility_flags = [ "nodejs_compat" ]
 
 [vars]
 DISCORD_PUBLIC_KEY = "d1750e7d16a519b378c90a87bd8c7e41292d80b80c5f768482a54b2eeb2ae9bd"
-DISCORD_TOKEN = "MTQ1MTA0MDg3MDY4OTQxMTE5Mw.Ghjmu_.KLGfMYPvksXvdJeeTWnWCbjMSx7b4WQTxQs9OM"
 
 [[kv_namespaces]]
 binding = "SILK_ROAD_KV"
 id = "1c499c2ae0a6475388fd829f59ffce05"
 
+[[kv_namespaces]]
+binding = "SCRIPTS_KV"
+id = "PASTE_THE_NEW_ID_HERE"
