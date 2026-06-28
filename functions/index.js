@@ -94,8 +94,8 @@ const SILK_ROAD_HTML = `<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Silk Road — API Manifest</title>
-<meta name="description" content="Get Roblox Scripts for free Keyless + with keysystem all Avaiable here">
+<title>Silk Road - Script Hub - Free Roblox Scripts</title>
+<meta name="description" content="Free Roblox scripts for BlocFruits, Grow a Garden, Block Local,Rivals and more Browser keyless scripts, upload your own and discover new scripts daily">
 <meta property="og:type" content="website">
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=JetBrains+Mono:wght@400;500&display=swap');
