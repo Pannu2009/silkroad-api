@@ -242,15 +242,15 @@ const SILK_ROAD_HTML = `<!DOCTYPE html>
 <body>
   <canvas id="dust"></canvas>
   <main class="manifest">
-    <div class="route-line load-in d1">Caravan Manifest</div>
+    <div class="route-line load-in d1">SilkRoad Scripts Caravan Manifest</div>
 
-    <h1 class="load-in d2">The <em>Silk Road</em><br>API</h1>
-    <p class="tagline load-in d2">Backend trade routes for the realm — handling player data, currency sync, and Discord caravan dispatches.</p>
+    <h1 class="load-in d2">The <em>Silk Road</em><br>Script Hub</h1>
+    <p class="tagline load-in d2">Explore The World Biggest Route and Finds Scripts you like., BloxFruits, Grow A Garden, Rivals, LumberTyccon 2 - All Avaibile Here</p>
 
     <div class="seal-row load-in d3">
       <div class="seal">
         <span class="dot"></span>
-        <span class="seal-text">Route status: <b>open</b></span>
+        <span class="seal-text">Route : <b>open</b></span>
       </div>
       <button class="btn info-btn" id="infoToggle" onclick="toggleInfo()">
         <span>More about this route</span>
@@ -265,26 +265,11 @@ const SILK_ROAD_HTML = `<!DOCTYPE html>
 
     <div class="info-panel" id="infoPanel">
       <div class="info-inner">
-        <p>This API is the backbone connecting the Silk Road game servers to the outside world — it relays Discord caravan commands (rewards, lookups, verification codes), keeps a ledger of playtime per traveler, and issues one-time seals (codes) used to confirm a player's identity across platforms.</p>
-        <p>Every checkpoint below is gated: owner-only commands check a Discord user ID before responding, seals expire after ten minutes, and currency never moves based on a number the client claims — only what the server itself calculates and confirms.</p>
-        <p>Built and maintained out of <a href="https://dakait.online">dakait.online</a>, running on Cloudflare Workers with KV as the ledger store.</p>
+        <p>This Route has many Scripts for you to use From being a Route connecting to our Api Apps and more now a Script Hub for players Who Want a ShortCut in games , Soon we will add Pc Games also Stay Connected </p>
+        <p>Every Script of our Hub has a Mark of SilkRoad , Now Get on the route, carry your wagons and get your Own Scripts Now.</p>
+        <p>Built and maintained out of <a href="https://dakait.online">dakait.online</a>, .</p>
       </div>
     </div>
-
-    <section class="ledger reveal">
-      <div class="ledger-label">Active Checkpoints</div>
-      <div class="routes">
-        <div class="route"><span class="route-name">/poll</span><span class="route-status">dispatch queue</span></div>
-        <div class="route"><span class="route-name">/sync-playtime</span><span class="route-status">caravan log</span></div>
-        <div class="route"><span class="route-name">/get-playtime</span><span class="route-status">caravan log</span></div>
-        <div class="route"><span class="route-name">/check-existing-code</span><span class="route-status">seal registry</span></div>
-        <div class="route"><span class="route-name">/store-code</span><span class="route-status">seal registry</span></div>
-        <div class="route"><span class="route-name">/check-code</span><span class="route-status">seal registry</span></div>
-        <div class="route"><span class="route-name">/register-commands</span><span class="route-status">Discord setup</span></div>
-        <div class="route"><a href="/scripts" class="route-name">/scripts</a><span class="route-status">public loot drop</span></div>
-        <div class="route"><a href="/upload-scripts" class="route-name">/upload-scripts</a><span class="route-status">drop point</span></div>
-      </div>
-    </section>
 
     <section class="ledger reveal">
       <div class="ledger-label">Caravan Leadership</div>
@@ -311,7 +296,7 @@ const SILK_ROAD_HTML = `<!DOCTYPE html>
 
     <footer class="reveal">
       <span>dakait.online</span>
-      <span>operated by Dakait Shah &amp; Dakait Guri</span>
+      <span>operated by Dakait SHAH  &amp; Dakait GURI</span>
     </footer>
   </main>
 
