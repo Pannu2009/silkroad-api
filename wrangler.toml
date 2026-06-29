@@ -19,3 +19,7 @@ id = "1c499c2ae0a6475388fd829f59ffce05"
 [[kv_namespaces]]
 binding = "SCRIPTS_KV"
 id = "a9525ec5ad3847ac940b4a79a2f4b9e2"
+
+[[kv_namespaces]]
+binding = "SESSIONS_KV"
+id = "4d492226f43b419993d14731d5dc0534"
