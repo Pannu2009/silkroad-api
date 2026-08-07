@@ -143,7 +143,7 @@ async function sendDiscordWebhook(env, { title, gameName, link, tags, username }
         gameName ? `For game: **${gameName}**` : null,
         `Title: ${title}`,
         link,
-        tags && tags.length ? `Tags: ${tags.map((t) => `\`${t}\``).join(" ")}` : null,
+        tags && tags.length ? `Tags: ${tags.map((t) => \`\\\`\${t}\\\`\`).join(" ")}` : null,
     ].filter(Boolean);
 
     try {
