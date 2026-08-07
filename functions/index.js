@@ -1,5 +1,59 @@
-export async function onRequest(context) {
-  const html = `<!DOCTYPE html>
+export default {
+  async fetch(request, env, ctx) {
+    const url = new URL(request.url);
+
+    // Standard CORS headers for cross-origin requests
+    const corsHeaders = {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    };
+
+    // Handle OPTIONS preflight request
+    if (request.method === 'OPTIONS') {
+      return new Response(null, { headers: corsHeaders });
+    }
+
+    try {
+      // 1. API: SERVER STATUS ENDPOINT
+      if (url.pathname === '/api/status' && request.method === 'GET') {
+        return new Response(
+          JSON.stringify({ status: 'online', playersOnline: 5 }),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // 2. API: DISCORD WEBHOOK ENDPOINT
+      if (url.pathname === '/api/webhook/notify' && request.method === 'POST') {
+        const payload = await request.json();
+        const webhookUrl = env.DISCORD_WEBHOOK_URL;
+
+        if (!webhookUrl) {
+          return new Response(
+            JSON.stringify({ error: 'DISCORD_WEBHOOK_URL environment variable is not configured.' }),
+            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        const discordResponse = await fetch(webhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            username: payload.username || 'Silkroad Alert',
+            avatar_url: payload.avatar_url || '',
+            content: payload.content || 'Website notification triggered.',
+            embeds: payload.embeds || [],
+          }),
+        });
+
+        return new Response(JSON.stringify({ success: discordResponse.ok }), {
+          status: discordResponse.status,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      // 3. FRONTEND: WEBSITE HTML PAGE
+      const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -122,8 +176,8 @@ export async function onRequest(context) {
         <p class="subtitle">Welcome to the official game hub and server community.</p>
 
         <div class="status-card">
-            <div class="status-dot" id="statusDot"></div>
-            <div class="status-text" id="statusText">Server Online | Players: <span id="playerCount">5</span></div>
+            <div class="status-dot"></div>
+            <div class="status-text">Server Online | Players: <span id="playerCount">5</span></div>
         </div>
 
         <div class="btn-group">
@@ -145,7 +199,7 @@ export async function onRequest(context) {
                     document.getElementById('playerCount').innerText = data.playersOnline || 0;
                 }
             } catch (err) {
-                console.log('Status update check failed');
+                console.log('Status update failed');
             }
         }
         setInterval(fetchServerStatus, 30000);
@@ -153,8 +207,16 @@ export async function onRequest(context) {
 </body>
 </html>`;
 
-  return new Response(html, {
-    headers: { 'Content-Type': 'text/html; charset=utf-8' },
-  });
-}
+      return new Response(html, {
+        headers: { 'Content-Type': 'text/html; charset=utf-8' },
+      });
+
+    } catch (err) {
+      return new Response(
+        JSON.stringify({ error: err.message }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+  }
+};
 
