@@ -12,14 +12,19 @@ async function verifyDiscordSignature(request, publicKey) {
         return await crypto.subtle.verify('NODE-ED25519', key, sigBytes, data);
     } catch (err) { return false; }
 }
+
 function getOption(options, name) { const opt = options.find(o => o.name === name); return opt ? opt.value : null; }
+
 function jsonResponse(data, status = 200, extraHeaders = {}) {
     return new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json", ...extraHeaders } });
 }
+
 function sanitizeText(value, maxLen) { if (typeof value !== "string") return ""; return value.trim().slice(0, maxLen); }
+
 function escapeHtml(str) {
     return String(str).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
+
 function sanitizeTags(input) {
     if (!input) return [];
     let arr;
@@ -28,6 +33,7 @@ function sanitizeTags(input) {
     else return [];
     return arr.map((t) => String(t).trim().toUpperCase().replace(/[\[\]]/g, "")).filter((t) => t.length > 0 && t.length <= 24).slice(0, 10);
 }
+
 function renderCodeWithLineNumbers(code) {
     const lines = code.split("\n");
     return lines.map((line, i) => {
@@ -79,6 +85,7 @@ function parseCookies(request) {
     header.split(";").forEach((part) => { const [k, ...v] = part.trim().split("="); if (k) out[k] = decodeURIComponent(v.join("=")); });
     return out;
 }
+
 async function getSession(request, env) {
     const cookies = parseCookies(request);
     const sid = cookies.session;
@@ -87,11 +94,13 @@ async function getSession(request, env) {
     if (!raw) return null;
     return JSON.parse(raw);
 }
+
 function isAdminEmail(env, email) {
     if (!env.ADMIN_EMAILS || !email) return false;
     const list = env.ADMIN_EMAILS.split(",").map((e) => e.trim().toLowerCase());
     return list.includes(email.toLowerCase());
 }
+
 async function sendDiscordWebhook(env, { title, gameName, link, tags, username }) {
     if (!env.DISCORD_WEBHOOK_URL) return;
     const lines = [
@@ -106,29 +115,19 @@ async function sendDiscordWebhook(env, { title, gameName, link, tags, username }
 /* ─────────────────── FAVICON SVG ─────────────────── */
 const FAVICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
   <rect width="64" height="64" rx="12" fill="#0d0f14"/>
-  <!-- camel silhouette -->
   <g fill="#d4a574">
-    <!-- body -->
     <ellipse cx="30" cy="42" rx="16" ry="10"/>
-    <!-- hump -->
     <ellipse cx="24" cy="33" rx="7" ry="8"/>
-    <!-- head -->
     <ellipse cx="44" cy="34" rx="6" ry="5"/>
-    <!-- neck -->
     <path d="M38 34 Q36 40 30 42" stroke="#d4a574" stroke-width="5" fill="none" stroke-linecap="round"/>
-    <!-- snout -->
     <ellipse cx="49" cy="36" rx="3.5" ry="2.5"/>
-    <!-- legs -->
     <rect x="18" y="50" width="4" height="10" rx="2"/>
     <rect x="26" y="51" width="4" height="9" rx="2"/>
     <rect x="33" y="50" width="4" height="10" rx="2"/>
     <rect x="39" y="51" width="4" height="9" rx="2"/>
-    <!-- eye -->
     <circle cx="46" cy="32.5" r="1.2" fill="#0d0f14"/>
-    <!-- ear -->
     <ellipse cx="41" cy="30" rx="2" ry="3" transform="rotate(-20 41 30)"/>
   </g>
-  <!-- small star accent -->
   <circle cx="14" cy="14" r="2" fill="#d4a574" opacity="0.7"/>
   <circle cx="52" cy="18" r="1.5" fill="#d4a574" opacity="0.5"/>
   <circle cx="10" cy="30" r="1" fill="#d4a574" opacity="0.4"/>
@@ -144,7 +143,6 @@ const SHARED_HEAD = (title, desc, canonical, ogImage = "https://dakait.online/og
 <meta name="robots" content="index, follow"/>
 <meta name="keywords" content="roblox scripts, free roblox scripts, roblox executor scripts, keyless roblox scripts, blox fruits script, grow a garden script, rivals script, lumber tycoon script, dakait"/>
 
-<!-- Open Graph (Discord / WhatsApp / Facebook previews) -->
 <meta property="og:type" content="website"/>
 <meta property="og:title" content="${title}"/>
 <meta property="og:description" content="${desc}"/>
@@ -152,13 +150,11 @@ const SHARED_HEAD = (title, desc, canonical, ogImage = "https://dakait.online/og
 <meta property="og:image" content="${ogImage}"/>
 <meta property="og:site_name" content="Silk Road Script Hub — dakait.online"/>
 
-<!-- Twitter card -->
 <meta name="twitter:card" content="summary_large_image"/>
 <meta name="twitter:title" content="${title}"/>
 <meta name="twitter:description" content="${desc}"/>
 <meta name="twitter:image" content="${ogImage}"/>
 
-<!-- Favicon -->
 <link rel="icon" href="/favicon.svg" type="image/svg+xml"/>
 <link rel="apple-touch-icon" href="/favicon.svg"/>
 `;
@@ -180,26 +176,21 @@ ${SHARED_HEAD(
   html{ scroll-behavior:smooth; }
   body{ background:var(--ink); background-image: radial-gradient(ellipse at 20% 0%, rgba(212,165,116,0.08), transparent 60%), radial-gradient(ellipse at 80% 30%, rgba(193,80,46,0.06), transparent 60%); color:var(--parchment); font-family:'JetBrains Mono',monospace; min-height:100vh; padding:8vh 6vw 6vh; display:flex; justify-content:center; }
   .manifest{ max-width:760px; width:100%; position:relative; z-index:1; }
-
   .route-line{ display:flex; align-items:center; gap:10px; margin-bottom:2.2rem; color:var(--sand); font-size:0.72rem; letter-spacing:0.18em; text-transform:uppercase; opacity:0.75; }
   .route-line::before,.route-line::after{ content:""; flex:1; height:1px; background:linear-gradient(90deg,transparent,var(--sand),transparent); opacity:0.4; }
-
   h1{ font-family:'Fraunces',serif; font-weight:600; font-size:clamp(2.6rem,7vw,4.4rem); line-height:1.02; letter-spacing:-0.01em; }
   h1 em{ font-style:italic; color:var(--sand); }
   .tagline{ margin-top:1.1rem; font-size:0.95rem; opacity:0.62; max-width:50ch; line-height:1.6; min-height:1.6em; }
-
   .stat-bar{ margin-top:1.4rem; display:flex; gap:1.4rem; flex-wrap:wrap; }
   .stat{ display:flex; flex-direction:column; }
   .stat-num{ font-family:'Fraunces',serif; font-size:2rem; color:var(--sand); line-height:1; }
   .stat-label{ font-size:0.65rem; letter-spacing:0.15em; text-transform:uppercase; opacity:0.55; margin-top:2px; }
-
   .seal-row{ margin-top:2.6rem; display:flex; flex-wrap:wrap; align-items:center; gap:0.9rem; }
   .seal{ display:inline-flex; align-items:center; gap:0.7rem; padding:0.85rem 1.3rem; border:1px solid rgba(212,165,116,0.35); border-radius:999px; background:rgba(212,165,116,0.05); }
   .dot{ width:8px; height:8px; border-radius:50%; background:var(--green); animation:pulse 2.2s infinite; }
   @keyframes pulse{ 0%{box-shadow:0 0 0 0 rgba(95,191,122,0.55)} 70%{box-shadow:0 0 0 8px rgba(95,191,122,0)} 100%{box-shadow:0 0 0 0 rgba(95,191,122,0)} }
   .seal-text{ font-size:0.74rem; letter-spacing:0.12em; text-transform:uppercase; opacity:0.85; }
   .seal-text b{ color:var(--green); font-weight:500; }
-
   .btn{ appearance:none; border:1px solid rgba(193,80,46,0.5); background:rgba(193,80,46,0.1); color:var(--parchment); font-family:'JetBrains Mono',monospace; font-size:0.72rem; letter-spacing:0.1em; text-transform:uppercase; padding:0.85rem 1.4rem; border-radius:999px; cursor:pointer; transition:background 0.2s, border-color 0.2s, transform 0.15s; display:inline-flex; align-items:center; gap:0.5rem; text-decoration:none; }
   .btn:hover{ background:rgba(193,80,46,0.22); border-color:var(--vermilion); }
   .btn:active{ transform:scale(0.97); }
@@ -209,38 +200,30 @@ ${SHARED_HEAD(
   .btn.gold:hover{ background:rgba(212,165,116,0.22); border-color:var(--sand); }
   .arrow{ transition:transform 0.25s; font-size:0.85em; }
   .info-btn.open .arrow{ transform:rotate(90deg); }
-
   .info-panel{ max-height:0; overflow:hidden; transition:max-height 0.45s ease; }
   .info-panel.open{ max-height:900px; }
   .info-inner{ margin-top:1.8rem; padding:1.6rem 1.8rem; border:1px solid rgba(212,165,116,0.18); border-radius:10px; background:rgba(232,220,200,0.03); font-size:0.85rem; line-height:1.75; opacity:0.85; }
   .info-inner p{ margin-bottom:1rem; }
   .info-inner p:last-child{ margin-bottom:0; }
-
-  /* Caravan route animation */
   .caravan-track{ margin:2.8rem 0 0; position:relative; height:28px; }
   .track-line{ position:absolute; top:50%; left:0; right:0; height:1px; background:linear-gradient(90deg,transparent,rgba(212,165,116,0.3),rgba(212,165,116,0.6),rgba(212,165,116,0.3),transparent); transform:translateY(-50%); }
   .track-dot{ position:absolute; top:50%; width:6px; height:6px; border-radius:50%; background:var(--sand); transform:translate(-50%,-50%); animation:caravanMove 6s ease-in-out infinite; }
   .track-dot:nth-child(2){ animation-delay:1.5s; opacity:0.7; width:5px; height:5px; }
   .track-dot:nth-child(3){ animation-delay:3s; opacity:0.5; width:4px; height:4px; }
   @keyframes caravanMove{ 0%{left:0%;opacity:0} 10%{opacity:1} 90%{opacity:1} 100%{left:100%;opacity:0} }
-
   section{ margin-top:3.4rem; }
   .ledger{ border-top:1px solid rgba(212,165,116,0.18); padding-top:1.8rem; }
   .ledger-label{ font-size:0.66rem; letter-spacing:0.18em; text-transform:uppercase; color:var(--vermilion); opacity:0.85; margin-bottom:1.1rem; }
-
   .crew{ display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:1.2rem; }
   .crew-card{ border:1px solid rgba(212,165,116,0.18); border-radius:10px; padding:1.4rem 1.6rem; background:rgba(232,220,200,0.02); transition:transform 0.3s, border-color 0.3s, background 0.3s; }
   .crew-card:hover{ transform:translateY(-3px); border-color:rgba(212,165,116,0.4); background:rgba(232,220,200,0.04); }
   .crew-name{ font-family:'Fraunces',serif; font-size:1.25rem; color:var(--sand); margin-bottom:0.3rem; }
   .crew-role{ font-size:0.68rem; letter-spacing:0.1em; text-transform:uppercase; opacity:0.55; margin-bottom:0.8rem; }
   .crew-desc{ font-size:0.82rem; opacity:0.75; line-height:1.6; }
-
   .quote-block{ border-left:2px solid var(--vermilion); padding-left:1.4rem; font-family:'Fraunces',serif; font-style:italic; font-size:1.15rem; opacity:0.85; line-height:1.55; }
   .quote-attr{ margin-top:0.8rem; font-family:'JetBrains Mono',monospace; font-style:normal; font-size:0.7rem; letter-spacing:0.1em; text-transform:uppercase; opacity:0.5; }
-
   footer{ margin-top:3.5rem; padding-top:1.5rem; border-top:1px solid rgba(212,165,116,0.1); font-size:0.7rem; opacity:0.4; letter-spacing:0.05em; display:flex; justify-content:space-between; flex-wrap:wrap; gap:0.5rem; }
   a{ color:var(--sand); }
-
   @keyframes fadeUp{ from{opacity:0;transform:translateY(14px)} to{opacity:1;transform:translateY(0)} }
   .load-in{ opacity:0; animation:fadeUp 0.9s cubic-bezier(0.16,1,0.3,1) forwards; }
   .load-in.d1{ animation-delay:0.05s; }
@@ -249,7 +232,6 @@ ${SHARED_HEAD(
   .load-in.d4{ animation-delay:0.5s; }
   .reveal{ opacity:0; transform:translateY(18px); transition:opacity 0.8s cubic-bezier(0.16,1,0.3,1), transform 0.8s cubic-bezier(0.16,1,0.3,1); }
   .reveal.in-view{ opacity:1; transform:translateY(0); }
-
   #dust{ position:fixed; inset:0; width:100%; height:100%; pointer-events:none; z-index:0; opacity:0.5; }
   @media(prefers-reduced-motion:reduce){ .dot,.track-dot{animation:none} html{scroll-behavior:auto} .load-in,.reveal{animation:none !important;opacity:1 !important;transform:none !important;transition:none !important} #dust{display:none} }
 </style>
@@ -258,45 +240,27 @@ ${SHARED_HEAD(
 <canvas id="dust"></canvas>
 <main class="manifest">
   <div class="route-line load-in d1">Silk Road Script Hub — dakait.online</div>
-
   <h1 class="load-in d2">The <em>Silk Road</em><br>Script Hub</h1>
   <p class="tagline load-in d2" id="typewriterText"></p>
-
   <div class="stat-bar load-in d3">
-    <div class="stat">
-      <span class="stat-num" id="scriptCount">—</span>
-      <span class="stat-label">Scripts dropped</span>
-    </div>
-    <div class="stat">
-      <span class="stat-num">Free</span>
-      <span class="stat-label">Always</span>
-    </div>
-    <div class="stat">
-      <span class="stat-num">∞</span>
-      <span class="stat-label">Games covered</span>
-    </div>
+    <div class="stat"><span class="stat-num" id="scriptCount">—</span><span class="stat-label">Scripts dropped</span></div>
+    <div class="stat"><span class="stat-num">Free</span><span class="stat-label">Always</span></div>
+    <div class="stat"><span class="stat-num">∞</span><span class="stat-label">Games covered</span></div>
   </div>
-
   <div class="caravan-track load-in d3">
-    <div class="track-line"></div>
-    <div class="track-dot"></div>
-    <div class="track-dot"></div>
-    <div class="track-dot"></div>
+    <div class="track-line"></div><div class="track-dot"></div><div class="track-dot"></div><div class="track-dot"></div>
   </div>
-
   <div class="seal-row load-in d3">
     <div class="seal"><span class="dot"></span><span class="seal-text">Route: <b>open</b></span></div>
     <button class="btn info-btn" id="infoToggle" onclick="toggleInfo()">
       <span>More about this route</span><span class="arrow">›</span>
     </button>
   </div>
-
   <div class="seal-row load-in d4">
     <a class="btn primary" href="/scripts">Explore Scripts</a>
     <a class="btn gold" href="/upload-scripts">Upload Script</a>
   </div>
   <div class="seal-row load-in d4" id="accountRow"></div>
-
   <div class="info-panel" id="infoPanel">
     <div class="info-inner">
       <p>Silk Road is a free Roblox script hub — find scripts for Blox Fruits, Grow a Garden, Rivals, Lumber Tycoon 2, and more. Every script is uploaded by the community, keyless where possible, and browsable without an account.</p>
@@ -304,7 +268,6 @@ ${SHARED_HEAD(
       <p>Built by <a href="https://dakait.online">Dakait Shah &amp; Dakait Guri</a>.</p>
     </div>
   </div>
-
   <section class="ledger reveal">
     <div class="ledger-label">Caravan Leadership</div>
     <div class="crew">
@@ -320,27 +283,19 @@ ${SHARED_HEAD(
       </div>
     </div>
   </section>
-
   <section class="reveal">
     <div class="quote-block">
       "A route is only as trustworthy as the hands that guard its checkpoints."
       <div class="quote-attr">— Silk Road Charter</div>
     </div>
   </section>
-
   <footer class="reveal">
     <span>dakait.online</span>
     <span>operated by Dakait Shah &amp; Dakait Guri</span>
   </footer>
 </main>
-
 <script>
-  // Typewriter
-  const phrases = [
-    "Blox Fruits, Grow a Garden, Rivals — all here.",
-    "Free Roblox scripts. No keys. No paywalls.",
-    "Drop a script. Take a script. Community built.",
-  ];
+  const phrases = ["Blox Fruits, Grow a Garden, Rivals — all here.", "Free Roblox scripts. No keys. No paywalls.", "Drop a script. Take a script. Community built."];
   let pi = 0, ci = 0, deleting = false;
   const tw = document.getElementById("typewriterText");
   function typeStep() {
@@ -356,7 +311,6 @@ ${SHARED_HEAD(
   }
   typeStep();
 
-  // Live script count
   fetch("/api/scripts").then(r => r.json()).then(d => {
     const n = (d.scripts || []).length;
     const el = document.getElementById("scriptCount");
@@ -365,7 +319,6 @@ ${SHARED_HEAD(
     const t = setInterval(() => { cur = Math.min(cur + step, n); el.textContent = cur; if (cur >= n) clearInterval(t); }, 30);
   }).catch(() => {});
 
-  // Login row
   fetch('/api/me').then(r => r.json()).then(me => {
     const row = document.getElementById('accountRow');
     if (me.loggedIn) row.innerHTML = '<span class="seal-text" style="opacity:0.75;">Signed in as ' + me.name + '</span><a class="btn" href="/auth/logout">Log out</a>';
@@ -379,13 +332,11 @@ ${SHARED_HEAD(
     btn.querySelector('span').textContent = isOpen ? 'Less detail' : 'More about this route';
   }
 
-  // Scroll reveal
   const obs = new IntersectionObserver((entries) => {
     entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in-view'); obs.unobserve(e.target); } });
   }, { threshold: 0.15 });
   document.querySelectorAll('.reveal').forEach(el => obs.observe(el));
 
-  // Dust
   if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
     const canvas = document.getElementById('dust'), ctx = canvas.getContext('2d');
     let w, h, particles;
@@ -424,123 +375,69 @@ ${SHARED_HEAD(
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600;700&display=swap"/>
 <style>
-  :root {
-    --bg: #0a0b0e;
-    --surface: #12141a;
-    --surface2: #1a1d26;
-    --border: #22253000;
-    --border-v: #222530;
-    --text: #e4e6ed;
-    --muted: #7a7f90;
-    --accent: #f5a623;
-    --accent2: #e8913a;
-    --green: #4ecb7a;
-    --red: #f05656;
-    --mono: 'JetBrains Mono', monospace;
-    --sans: 'Inter', sans-serif;
-  }
+  :root { --bg: #0a0b0e; --surface: #12141a; --surface2: #1a1d26; --border: #22253000; --border-v: #222530; --text: #e4e6ed; --muted: #7a7f90; --accent: #f5a623; --accent2: #e8913a; --green: #4ecb7a; --red: #f05656; --mono: 'JetBrains Mono', monospace; --sans: 'Inter', sans-serif; }
   *, *::before, *::after { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; }
   body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.5; overflow-x: hidden; }
-
-  /* ── Grain texture overlay ── */
-  body::before {
-    content: '';
-    position: fixed; inset: 0; z-index: 0; pointer-events: none;
-    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
-    opacity: 0.025; mix-blend-mode: overlay;
-  }
-
+  body::before { content: ''; position: fixed; inset: 0; z-index: 0; pointer-events: none; background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E"); opacity: 0.025; mix-blend-mode: overlay; }
   .wrap { max-width: 1100px; margin: 0 auto; padding: 28px 20px 100px; position: relative; z-index: 1; }
-
-  /* ── Nav ── */
   nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 40px; gap: 12px; flex-wrap: wrap; }
   .brand { font-family: var(--mono); font-weight: 700; font-size: 13px; letter-spacing: 0.14em; text-transform: uppercase; }
   .brand a { color: var(--muted); text-decoration: none; }
   .brand span { color: var(--accent); }
   .nav-pill { font-family: var(--mono); font-size: 11.5px; letter-spacing: 0.06em; text-transform: uppercase; padding: 8px 16px; border-radius: 100px; border: 1px solid rgba(245,166,35,0.35); color: var(--accent); text-decoration: none; transition: background 0.2s, border-color 0.2s; }
   .nav-pill:hover { background: rgba(245,166,35,0.1); border-color: var(--accent); }
-
-  /* ── Hero ── */
   .hero { margin-bottom: 36px; overflow: hidden; }
   .hero-eyebrow { font-family: var(--mono); font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--accent); margin-bottom: 10px; opacity: 0; animation: fadeSlideUp 0.6s 0.1s cubic-bezier(0.16,1,0.3,1) forwards; }
   .hero-title { font-family: var(--mono); font-size: clamp(32px, 6vw, 54px); font-weight: 700; line-height: 1; margin: 0 0 12px; letter-spacing: -0.02em; clip-path: inset(0 100% 0 0); animation: revealRight 0.7s 0.25s cubic-bezier(0.77,0,0.18,1) forwards; }
   .hero-title .hl { color: var(--accent); }
   .hero-sub { font-size: 15px; color: var(--muted); max-width: 52ch; opacity: 0; animation: fadeSlideUp 0.6s 0.5s cubic-bezier(0.16,1,0.3,1) forwards; }
-
   @keyframes revealRight { to { clip-path: inset(0 0% 0 0); } }
   @keyframes fadeSlideUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
-
-  /* ── Search ── */
   .search-wrap { position: relative; margin-bottom: 16px; opacity: 0; animation: fadeSlideUp 0.5s 0.6s cubic-bezier(0.16,1,0.3,1) forwards; }
   .search-wrap::before { content: '⌕'; position: absolute; left: 16px; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: 18px; pointer-events: none; }
   #searchBox { width: 100%; background: var(--surface); border: 1px solid var(--border-v); border-radius: 10px; color: var(--text); padding: 14px 16px 14px 44px; font-family: var(--sans); font-size: 14px; transition: border-color 0.25s, box-shadow 0.25s; outline: none; }
   #searchBox:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(245,166,35,0.12); }
   #searchBox::placeholder { color: var(--muted); }
-
-  /* ── Filter pills ── */
   .filter-row { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 28px; opacity: 0; animation: fadeSlideUp 0.5s 0.7s cubic-bezier(0.16,1,0.3,1) forwards; }
   .pill-filter { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.05em; text-transform: uppercase; padding: 6px 14px; border-radius: 100px; border: 1px solid var(--border-v); color: var(--muted); background: transparent; cursor: pointer; transition: all 0.2s; }
   .pill-filter:hover { border-color: var(--accent); color: var(--accent); }
   .pill-filter.active { background: rgba(245,166,35,0.12); border-color: var(--accent); color: var(--accent); }
   .pill-filter.kl.active { background: rgba(78,203,122,0.1); border-color: var(--green); color: var(--green); }
-
-  /* ── List header ── */
   .list-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 18px; }
   .list-head h2 { font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.15em; color: var(--muted); margin: 0; }
   #count { font-family: var(--mono); font-size: 11px; color: rgba(245,166,35,0.5); }
-
-  /* ── Grid ── */
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
   .grid.filtering { opacity: 0; transform: translateY(6px); transition: opacity 0.15s, transform 0.15s; }
   .grid.settled { opacity: 1; transform: translateY(0); transition: opacity 0.25s, transform 0.25s; }
-
-  /* ── Shimmer ── */
   @keyframes shimmer { 0% { background-position: -400px 0; } 100% { background-position: 400px 0; } }
   .skel { height: 310px; border-radius: 14px; background: linear-gradient(90deg, var(--surface) 25%, var(--surface2) 50%, var(--surface) 75%); background-size: 800px 100%; animation: shimmer 1.5s infinite; }
-
-  /* ── Card deal animation ── */
-  @keyframes cardDeal {
-    from { opacity: 0; transform: translateY(20px) rotate(1.5deg) scale(0.97); }
-    to   { opacity: 1; transform: translateY(0)   rotate(0deg)   scale(1); }
-  }
-
-  /* ── Card ── */
+  @keyframes cardDeal { from { opacity: 0; transform: translateY(20px) rotate(1.5deg) scale(0.97); } to { opacity: 1; transform: translateY(0) rotate(0deg) scale(1); } }
   .card { background: var(--surface); border: 1px solid var(--border-v); border-radius: 14px; overflow: hidden; text-decoration: none; color: var(--text); display: flex; flex-direction:column; position: relative; cursor: pointer; transform-origin: center bottom; transition: transform 0.28s cubic-bezier(0.34,1.56,0.64,1), border-color 0.25s, box-shadow 0.25s; animation: cardDeal 0.45s cubic-bezier(0.16,1,0.3,1) both; }
   .card:hover { transform: translateY(-6px) scale(1.012); border-color: rgba(245,166,35,0.5); box-shadow: 0 12px 40px rgba(245,166,35,0.1), 0 2px 8px rgba(0,0,0,0.4); }
   .card:active { transform: translateY(-2px) scale(1.005); }
-
-  /* Shimmer sweep on hover */
   .card::after { content: ''; position: absolute; inset: 0; background: linear-gradient(115deg, transparent 40%, rgba(245,166,35,0.06) 50%, transparent 60%); transform: translateX(-100%); transition: transform 0.5s ease; pointer-events: none; border-radius: 14px; }
   .card:hover::after { transform: translateX(100%); }
-
   .card-img { width: 100%; aspect-ratio: 16/9; object-fit: cover; background: linear-gradient(135deg, #14161d, #0c0d11); }
   .card-img-ph { width: 100%; aspect-ratio: 16/9; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #14161d, #0c0d11); font-size: 32px; color: rgba(245,166,35,0.2); font-family: var(--mono); }
-
   .key-badge { position: absolute; top: 10px; right: 10px; font-family: var(--mono); font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; padding: 3px 9px; border-radius: 6px; backdrop-filter: blur(8px); }
   .key-badge.kl { color: var(--green); background: rgba(10,12,16,0.85); border: 1px solid rgba(78,203,122,0.35); }
   .key-badge.hk { color: var(--red); background: rgba(10,12,16,0.85); border: 1px solid rgba(240,86,86,0.35); }
-
   .card-body { padding: 13px 15px 15px; display: flex; flex-direction: column; flex: 1; }
   .game-label { font-family: var(--mono); font-size: 10px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 4px; opacity: 0.8; }
   .card-title { font-weight: 700; font-size: 14.5px; margin: 0 0 5px; line-height: 1.3; }
   .card-desc { color: var(--muted); font-size: 12px; margin: 0 0 10px; flex: 1; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-
   .tag-row { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 10px; }
   .tag { font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.04em; padding: 2px 8px; border-radius: 5px; background: rgba(245,166,35,0.09); color: var(--accent); border: 1px solid rgba(245,166,35,0.2); }
   .tag.hub { background: rgba(78,203,122,0.08); color: var(--green); border-color: rgba(78,203,122,0.22); }
-
   .card-foot { display: flex; justify-content: space-between; align-items: center; font-size: 11.5px; color: var(--muted); padding-top: 8px; border-top: 1px solid var(--border-v); font-family: var(--mono); }
   .card-foot .user::before { content: '@'; color: var(--accent); }
   .view-arrow { color: var(--accent); font-size: 14px; transition: transform 0.2s; }
   .card:hover .view-arrow { transform: translateX(4px); }
-
-  /* ── Empty state ── */
   .empty { grid-column: 1/-1; text-align: center; padding: 80px 20px; }
   .empty-icon { font-size: 48px; margin-bottom: 12px; opacity: 0.3; animation: floatIcon 3s ease-in-out infinite; }
   @keyframes floatIcon { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-8px)} }
   .empty p { font-family: var(--mono); font-size: 13px; color: var(--muted); }
-
   @media(prefers-reduced-motion:reduce){ *, *::before, *::after{animation:none !important;transition:none !important;clip-path:none !important;} }
   @media(max-width:520px){ .hero-title{font-size:32px;} }
 </style>
@@ -551,17 +448,14 @@ ${SHARED_HEAD(
     <div class="brand"><a href="/">dakait<span>.online</span></a></div>
     <a class="nav-pill" href="/upload-scripts">+ Drop a script</a>
   </nav>
-
   <div class="hero">
     <div class="hero-eyebrow">Silk Road · Script Hub</div>
     <h1 class="hero-title"><span class="hl">Loot</span> the gallery.</h1>
     <p class="hero-sub">Scripts for Blox Fruits, Grow a Garden, Rivals, Lumber Tycoon — free, searchable, filterable. Click any card to copy.</p>
   </div>
-
   <div class="search-wrap">
     <input id="searchBox" type="text" placeholder="Search by title, game, tag — e.g. grow a garden autofarm" autocomplete="off" spellcheck="false"/>
   </div>
-
   <div class="filter-row">
     <button class="pill-filter active" data-f="all">All</button>
     <button class="pill-filter kl" data-f="keyless">Keyless only</button>
@@ -571,23 +465,18 @@ ${SHARED_HEAD(
     <button class="pill-filter" data-f="lumber">Lumber Tycoon</button>
     <button class="pill-filter" data-f="steal">Steal a Brainrot</button>
   </div>
-
   <div class="list-head">
     <h2>Latest drops</h2>
     <span id="count"></span>
   </div>
   <div id="grid" class="grid"></div>
 </div>
-
 <script>
   function esc(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
   function ago(ts){const s=Math.floor((Date.now()-ts)/1000);if(s<60)return"just now";if(s<3600)return Math.floor(s/60)+"m ago";if(s<86400)return Math.floor(s/3600)+"h ago";return Math.floor(s/86400)+"d ago";}
-
   const grid=document.getElementById("grid"), count=document.getElementById("count"), box=document.getElementById("searchBox");
   let all=[], filter="all";
-
   function shimmers(n=8){ grid.innerHTML=Array.from({length:n},()=>'<div class="skel"></div>').join(""); }
-
   function matches(m){
     if(filter==="keyless") return !m.keysystem;
     if(filter==="all") return true;
@@ -595,7 +484,6 @@ ${SHARED_HEAD(
     const hay=[m.title,m.description,m.gameName,...(m.tags||[])].join(" ").toLowerCase();
     return hay.includes(map[filter]||filter);
   }
-
   function render(scripts){
     grid.classList.remove("settled"); grid.classList.add("filtering");
     requestAnimationFrame(()=>{
@@ -623,7 +511,6 @@ ${SHARED_HEAD(
       });
     });
   }
-
   function applyFilters(){
     const q=box.value.trim().toLowerCase();
     let list=all.filter(matches);
@@ -631,7 +518,6 @@ ${SHARED_HEAD(
     count.textContent=list.length+(list.length===1?" script":" scripts");
     render(list);
   }
-
   async function load(){
     shimmers();
     try{
@@ -640,7 +526,6 @@ ${SHARED_HEAD(
       applyFilters();
     }catch{ grid.innerHTML='<div class="empty"><div class="empty-icon">🏜</div><p>Couldn\'t load scripts — try refreshing.</p></div>'; }
   }
-
   box.addEventListener("input",applyFilters);
   document.querySelectorAll(".pill-filter").forEach(b=>{
     b.addEventListener("click",()=>{
@@ -648,12 +533,12 @@ ${SHARED_HEAD(
       b.classList.add("active"); filter=b.dataset.f; applyFilters();
     });
   });
-
   load();
 </script>
 </body>
 </html>`;
 
+/* ─────────────────── UPLOAD PAGE ─────────────────── */
 const UPLOAD_HTML = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -665,44 +550,28 @@ ${SHARED_HEAD(
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600;700&display=swap"/>
 <style>
-  :root {
-    --bg: #0a0b0e; --surface: #12141a; --surface2: #1a1d26; --border: #222530;
-    --text: #e4e6ed; --muted: #7a7f90; --accent: #f5a623; --green: #4ecb7a; --red: #f05656;
-    --mono: 'JetBrains Mono', monospace; --sans: 'Inter', sans-serif;
-  }
+  :root { --bg: #0a0b0e; --surface: #12141a; --surface2: #1a1d26; --border: #222530; --text: #e4e6ed; --muted: #7a7f90; --accent: #f5a623; --green: #4ecb7a; --red: #f05656; --mono: 'JetBrains Mono', monospace; --sans: 'Inter', sans-serif; }
   *, *::before, *::after { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; }
   body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.5; overflow-x: hidden; }
   body::before { content:''; position:fixed; inset:0; z-index:0; pointer-events:none; background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E"); opacity:0.025; mix-blend-mode:overlay; }
-
   .page { max-width: 1060px; margin: 0 auto; padding: 28px 20px 100px; position: relative; z-index: 1; }
-
   nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 40px; flex-wrap: wrap; gap: 10px; }
   .brand { font-family: var(--mono); font-weight: 700; font-size: 13px; letter-spacing: 0.14em; text-transform: uppercase; }
   .brand a { color: var(--muted); text-decoration: none; } .brand span { color: var(--accent); }
   .back-link { font-family: var(--mono); font-size: 11.5px; color: var(--muted); text-decoration: none; transition: color 0.2s; }
   .back-link:hover { color: var(--accent); }
-
-  /* ── Hero ── */
   .hero { margin-bottom: 36px; }
   .hero-eyebrow { font-family: var(--mono); font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--accent); margin-bottom: 8px; opacity: 0; animation: up 0.6s 0.1s cubic-bezier(0.16,1,0.3,1) forwards; }
   .hero-title { font-family: var(--mono); font-size: clamp(28px,5vw,44px); font-weight: 700; line-height: 1.05; margin: 0 0 10px; clip-path: inset(0 100% 0 0); animation: reveal 0.7s 0.25s cubic-bezier(0.77,0,0.18,1) forwards; }
   .hero-sub { font-size: 14.5px; color: var(--muted); max-width: 52ch; opacity: 0; animation: up 0.6s 0.5s cubic-bezier(0.16,1,0.3,1) forwards; }
   @keyframes reveal { to { clip-path: inset(0 0% 0 0); } }
   @keyframes up { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-
-  /* ── Login banner ── */
   .login-banner { display: flex; justify-content: space-between; align-items: center; gap: 10px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 16px; margin-bottom: 28px; font-size: 13px; color: var(--muted); flex-wrap: wrap; opacity: 0; animation: up 0.5s 0.6s cubic-bezier(0.16,1,0.3,1) forwards; }
   .login-banner a { color: var(--accent); text-decoration: none; font-family: var(--mono); font-size: 12px; }
-
-  /* ── Layout: form + preview side by side ── */
   .layout { display: grid; grid-template-columns: 1fr 340px; gap: 28px; align-items: start; }
   @media(max-width:800px){ .layout{grid-template-columns:1fr;} .preview-sticky{position:static !important;} }
-
-  /* ── Form panel ── */
   .form-panel { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 24px; opacity: 0; animation: up 0.6s 0.7s cubic-bezier(0.16,1,0.3,1) forwards; }
-
-  /* Floating label fields */
   .field { position: relative; margin-bottom: 18px; }
   .field label { display: block; font-size: 11px; font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 7px; transition: color 0.2s; }
   .field:focus-within label { color: var(--accent); }
@@ -712,16 +581,12 @@ ${SHARED_HEAD(
   .field .hint { font-size: 11px; color: rgba(245,166,35,0.5); margin-top: 5px; font-family: var(--mono); }
   .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
   @media(max-width:500px){ .row2{grid-template-columns:1fr;} }
-
-  /* Key toggle */
   .toggle-label { font-size: 11px; font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 8px; }
   .key-toggle { display: flex; gap: 8px; margin-bottom: 18px; }
   .kt-opt { flex: 1; text-align: center; padding: 11px; border: 1px solid var(--border); border-radius: 8px; cursor: pointer; font-size: 12.5px; font-family: var(--mono); color: var(--muted); transition: all 0.2s; user-select: none; }
   .kt-opt:hover { border-color: var(--muted); }
   .kt-opt.active-kl { border-color: var(--green); color: var(--green); background: rgba(78,203,122,0.08); }
   .kt-opt.active-hk { border-color: var(--red); color: var(--red); background: rgba(240,86,86,0.08); }
-
-  /* Submit */
   .submit-row { display: flex; align-items: center; gap: 14px; margin-top: 6px; }
   .submit-btn { background: var(--accent); color: #1a0f00; border: none; font-family: var(--mono); font-weight: 700; font-size: 13px; letter-spacing: 0.06em; text-transform: uppercase; padding: 13px 24px; border-radius: 8px; cursor: pointer; transition: background 0.2s, transform 0.15s; position: relative; overflow: hidden; }
   .submit-btn::after { content:''; position:absolute; inset:0; background:rgba(255,255,255,0.15); transform:translateX(-100%) skewX(-20deg); transition:transform 0.4s ease; }
@@ -731,13 +596,10 @@ ${SHARED_HEAD(
   .form-msg { font-size: 13px; font-family: var(--mono); }
   .form-msg.err { color: var(--red); } .form-msg.ok { color: var(--green); }
   .form-msg.ok a { color: var(--accent); }
-
-  /* ── Preview panel ── */
   .preview-sticky { position: sticky; top: 28px; opacity: 0; animation: up 0.6s 0.9s cubic-bezier(0.16,1,0.3,1) forwards; }
   .preview-label { font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted); margin-bottom: 12px; display: flex; align-items: center; gap: 6px; }
   .preview-label::before { content:''; width:6px; height:6px; border-radius:50%; background:var(--accent); animation:pulseDot 2s infinite; }
   @keyframes pulseDot { 0%{box-shadow:0 0 0 0 rgba(245,166,35,0.5)} 70%{box-shadow:0 0 0 8px rgba(245,166,35,0)} 100%{box-shadow:0 0 0 0 rgba(245,166,35,0)} }
-
   .preview-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; transition: border-color 0.3s; }
   .preview-card.has-content { border-color: rgba(245,166,35,0.3); }
   .preview-ph { width:100%; aspect-ratio:16/9; display:flex; align-items:center; justify-content:center; background:linear-gradient(135deg,#14161d,#0c0d11); font-size:28px; color:rgba(245,166,35,0.15); font-family:var(--mono); }
@@ -752,7 +614,6 @@ ${SHARED_HEAD(
   .preview-foot { display:flex; justify-content:space-between; align-items:center; font-size:11px; color:var(--muted); padding-top:8px; border-top:1px solid var(--border); font-family:var(--mono); }
   .preview-foot .pu::before { content:'@'; color:var(--accent); }
   .preview-empty-hint { font-family:var(--mono); font-size:11px; color:var(--muted); text-align:center; padding:20px; opacity:0.6; }
-
   @media(prefers-reduced-motion:reduce){ *,*::before,*::after{animation:none !important;transition:none !important;clip-path:none !important;} }
 </style>
 </head>
@@ -762,15 +623,12 @@ ${SHARED_HEAD(
     <div class="brand"><a href="/">dakait<span>.online</span></a></div>
     <a class="back-link" href="/scripts">← Browse scripts</a>
   </nav>
-
   <div class="hero">
     <div class="hero-eyebrow">Silk Road · Script Hub</div>
     <h1 class="hero-title">Drop your script.</h1>
     <p class="hero-sub">Paste it. Tag it. It goes live immediately — no review, no waitlist. Anyone can copy it.</p>
   </div>
-
   <div class="login-banner" id="loginBanner">Checking…</div>
-
   <div class="layout">
     <section class="form-panel">
       <form id="uform">
@@ -818,7 +676,6 @@ ${SHARED_HEAD(
         </div>
       </form>
     </section>
-
     <aside class="preview-sticky">
       <div class="preview-label">Live preview</div>
       <div class="preview-card" id="previewCard">
@@ -828,7 +685,6 @@ ${SHARED_HEAD(
     </aside>
   </div>
 </div>
-
 <script>
   let keysys=false;
   const optKl=document.getElementById("optKl"), optHk=document.getElementById("optHk");
@@ -905,7 +761,6 @@ function buildDetailHtml(script, thumbnailUrl) {
     const keyBadge = script.keysystem ? `<span class="key-badge haskey">Key System</span>` : `<span class="key-badge keyless">Keyless / No Key</span>`;
     const imgBlock = thumbnailUrl ? `<img class="hero-img" src="${thumbnailUrl}" alt="${safeTitle} thumbnail"/>` : `<div class="hero-img placeholder">⌗</div>`;
 
-    // SEO: descriptive title Google will show in results
     const pageTitle = safeGame
         ? `${script.title} — ${script.gameName} Script | dakait.online`
         : `${script.title} | Silk Road Script Hub — dakait.online`;
@@ -914,7 +769,6 @@ function buildDetailHtml(script, thumbnailUrl) {
         : `${(script.description || script.title).slice(0, 155)}. Free Roblox script on dakait.online.`;
     const canonical = `https://dakait.online/scripts/${script.id}`;
 
-    // JSON-LD structured data — makes Google show rich results
     const jsonLd = JSON.stringify({
         "@context": "https://schema.org",
         "@type": "SoftwareSourceCode",
@@ -1282,174 +1136,56 @@ async function handleAuthCallback(request, env) {
     const sessionId = crypto.randomUUID();
     const session = { sub: profile.sub, email: profile.email, name: profile.name || profile.email, picture: profile.picture || null };
     await env.SESSIONS_KV.put(`session:${sessionId}`, JSON.stringify(session), { expirationTtl: 2592000 });
-    return new Response(null, { status: 302, headers: { Location: "/", "Set-Cookie": `session=${sessionId}; HttpOnly; Secure; Path=/; Max-Age=2592000; SameSite=Lax` } });
+    return new Response(null, { status: 302, headers: { Location: "/", "Set-Cookie": `session=${sessionId}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=2592000` } });
 }
 
-function handleAuthLogout() {
-    return new Response(null, { status: 302, headers: { Location: "/", "Set-Cookie": "session=; HttpOnly; Secure; Path=/; Max-Age=0; SameSite=Lax" } });
-}
-
-async function handleApiMe(request, env) {
-    const session = await getSession(request, env);
-    if (!session) return jsonResponse({ loggedIn: false });
-    return jsonResponse({ loggedIn: true, sub: session.sub, name: session.name, email: session.email, isAdmin: isAdminEmail(env, session.email) });
-}
-
-/* ─────────────────── Sitemap (helps Google index every script) ─────────────────── */
-async function buildSitemap(env) {
-    const index = await getScriptsIndex(env);
-    const sorted = [...index].sort((a, b) => b.createdAt - a.createdAt);
-    const urls = [
-        `<url><loc>https://dakait.online/</loc><changefreq>weekly</changefreq><priority>1.0</priority></url>`,
-        `<url><loc>https://dakait.online/scripts</loc><changefreq>daily</changefreq><priority>0.9</priority></url>`,
-        `<url><loc>https://dakait.online/upload-scripts</loc><changefreq>monthly</changefreq><priority>0.5</priority></url>`,
-        ...sorted.map(s => {
-            const lastmod = new Date(s.createdAt).toISOString().split("T")[0];
-            return `<url><loc>https://dakait.online/scripts/${s.id}</loc><lastmod>${lastmod}</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>`;
-        }),
-    ];
-    return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join("\n")}\n</urlset>`;
-}
-
-/* ─────────────────── Main fetch handler ─────────────────── */
+/* ─────────────────── WORKER EXPORT ROUTER ─────────────────── */
 export default {
-    async fetch(request, env) {
+    async fetch(request, env, ctx) {
         const url = new URL(request.url);
-        const OWNER_ID = "991408492780986398";
         const path = url.pathname;
 
-        // Favicon
-        if (path === "/favicon.svg" || path === "/favicon.ico") {
-            return new Response(FAVICON_SVG, { headers: { "Content-Type": "image/svg+xml", "Cache-Control": "public, max-age=86400" } });
+        if (request.method === "OPTIONS") return handleScriptsApi(request, env, path);
+
+        if (path.startsWith("/api/scripts")) return handleScriptsApi(request, env, path);
+        if (path === "/api/me") {
+            const session = await getSession(request, env);
+            return jsonResponse(session ? { loggedIn: true, name: session.name, sub: session.sub, isAdmin: isAdminEmail(env, session.email) } : { loggedIn: false });
         }
-
-        // robots.txt — tells Google what to crawl + where sitemap is
-        if (path === "/robots.txt") {
-            return new Response(
-                "User-agent: *\nAllow: /\nDisallow: /auth/\nDisallow: /api/\nDisallow: /register-commands\nSitemap: https://dakait.online/sitemap.xml\n",
-                { headers: { "Content-Type": "text/plain" } }
-            );
-        }
-
-        // sitemap.xml — list of all script URLs for Google to index
-        if (path === "/sitemap.xml") {
-            const xml = await buildSitemap(env);
-            return new Response(xml, { headers: { "Content-Type": "application/xml", "Cache-Control": "public, max-age=3600" } });
-        }
-
-        // Auth
-        if (path === "/auth/login") return handleAuthLogin(request, env);
-        if (path === "/auth/callback") return handleAuthCallback(request, env);
-        if (path === "/auth/logout") return handleAuthLogout();
-        if (path === "/api/me") return handleApiMe(request, env);
-
-        // Scripts pages
-        if (path === "/scripts" || path === "/scripts/") return new Response(GALLERY_HTML, { headers: { "Content-Type": "text/html" }, status: 200 });
-        if (path === "/upload-scripts" || path === "/upload-scripts/") return new Response(UPLOAD_HTML, { headers: { "Content-Type": "text/html" }, status: 200 });
-
-        // Roblox thumbnail proxy
-        if (path === "/api/roblox-thumbnail" && request.method === "GET") {
+        if (path === "/api/roblox-thumbnail") {
             const placeId = url.searchParams.get("placeId");
             const info = await getRobloxGameInfo(env, placeId);
-            if (!info || !info.imageUrl) return new Response("Not found", { status: 404 });
-            const imgRes = await fetch(info.imageUrl);
-            return new Response(imgRes.body, { headers: { "Content-Type": imgRes.headers.get("Content-Type") || "image/png", "Cache-Control": "public, max-age=86400" } });
+            if (info && info.imageUrl) return Response.redirect(info.imageUrl, 302);
+            return new Response("Not found", { status: 404 });
         }
 
-        // Edit page
+        if (path === "/auth/login") return handleAuthLogin(request, env);
+        if (path === "/auth/callback") return handleAuthCallback(request, env);
+        if (path === "/auth/logout") return new Response(null, { status: 302, headers: { Location: "/", "Set-Cookie": "session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT" } });
+
+        if (path === "/") return new Response(SILK_ROAD_HTML, { headers: { "Content-Type": "text/html;charset=UTF-8" } });
+        if (path === "/scripts") return new Response(GALLERY_HTML, { headers: { "Content-Type": "text/html;charset=UTF-8" } });
+        if (path === "/upload-scripts") return new Response(UPLOAD_HTML, { headers: { "Content-Type": "text/html;charset=UTF-8" } });
+        
+        const scriptMatch = path.match(/^\/scripts\/([a-zA-Z0-9-]+)$/);
+        if (scriptMatch) {
+            const raw = await env.SCRIPTS_KV.get(`script:${scriptMatch[1]}`);
+            if (!raw) return new Response("Not found", { status: 404 });
+            const script = JSON.parse(raw);
+            const thumbUrl = script.placeId ? `/api/roblox-thumbnail?placeId=${script.placeId}` : null;
+            return new Response(buildDetailHtml(script, thumbUrl), { headers: { "Content-Type": "text/html;charset=UTF-8" } });
+        }
+        
         const editMatch = path.match(/^\/scripts\/([a-zA-Z0-9-]+)\/edit$/);
-        if (editMatch && request.method === "GET") {
+        if (editMatch) {
             const raw = await env.SCRIPTS_KV.get(`script:${editMatch[1]}`);
-            if (!raw) return new Response("Script not found", { status: 404 });
-            const script = JSON.parse(raw);
-            const session = await getSession(request, env);
-            const isOwner = session && script.ownerSub && session.sub === script.ownerSub;
-            const isAdmin = session && isAdminEmail(env, session.email);
-            if (!isOwner && !isAdmin) return new Response("Not authorized", { status: 403 });
-            return new Response(buildEditHtml(script), { headers: { "Content-Type": "text/html" }, status: 200 });
+            if (!raw) return new Response("Not found", { status: 404 });
+            return new Response(buildEditHtml(JSON.parse(raw)), { headers: { "Content-Type": "text/html;charset=UTF-8" } });
         }
+        
+        if (path === "/favicon.svg") return new Response(FAVICON_SVG, { headers: { "Content-Type": "image/svg+xml", "Cache-Control": "public, max-age=86400" } });
 
-        // Script detail page (server-rendered — Google indexes each one)
-        const detailMatch = path.match(/^\/scripts\/([a-zA-Z0-9-]+)$/);
-        if (detailMatch && request.method === "GET") {
-            const raw = await env.SCRIPTS_KV.get(`script:${detailMatch[1]}`);
-            if (!raw) return new Response("Script not found", { status: 404 });
-            const script = JSON.parse(raw);
-            const thumbnailUrl = script.placeId ? `/api/roblox-thumbnail?placeId=${encodeURIComponent(script.placeId)}` : null;
-            return new Response(buildDetailHtml(script, thumbnailUrl), { headers: { "Content-Type": "text/html" }, status: 200 });
-        }
-
-        // Scripts JSON API
-        if (path.startsWith("/api/scripts")) {
-            const resp = await handleScriptsApi(request, env, path);
-            resp.headers.set("Access-Control-Allow-Origin", "*");
-            return resp;
-        }
-
-        // Discord bot
-        if (path === "/register-commands") {
-            const commandData = [
-                { name: "finduser", description: "Fetch stats (Owner Only)", options: [{ name: "userid", description: "Target UserID", type: 10, required: true }] },
-                { name: "reward", description: "Admin reward (Owner Only)", options: [{ name: "type", description: "Reward", type: 3, required: true, choices: [{ name: "Dinars", value: "dinars" }, { name: "XP", value: "xp" }] }, { name: "userid", description: "Target UserID", type: 10, required: true }, { name: "amount", description: "Quantity", type: 10, required: true }] },
-                { name: "verify", description: "Get your reward code", options: [{ name: "userid", description: "Your UserID", type: 10, required: true }] }
-            ];
-            const response = await fetch(`https://discord.com/api/v10/applications/1451040870689411193/commands`, { method: "PUT", headers: { "Authorization": `Bot ${env.DISCORD_TOKEN}`, "Content-Type": "application/json" }, body: JSON.stringify(commandData) });
-            return new Response(await response.text(), { status: response.status });
-        }
-
-        if (request.method === "POST" && !path.startsWith("/api/")) {
-            const isValid = await verifyDiscordSignature(request, env.DISCORD_PUBLIC_KEY);
-            if (!isValid) return new Response("Unauthorized", { status: 401 });
-            const interaction = await request.json();
-            if (interaction.type === 1) return new Response(JSON.stringify({ type: 1 }), { headers: { "Content-Type": "application/json" } });
-            const userId = interaction.member.user.id;
-            const cmd = interaction.data.name;
-            const options = interaction.data.options || [];
-            if ((cmd === "finduser" || cmd === "reward") && userId !== OWNER_ID) return new Response(JSON.stringify({ type: 4, data: { content: "❌ Access Denied." } }), { headers: { "Content-Type": "application/json" } });
-            const commandId = Date.now().toString();
-            let cmdData = { command: cmd, token: interaction.token };
-            if (cmd === "reward") { cmdData.type = getOption(options, "type"); cmdData.userId = getOption(options, "userid"); cmdData.amount = getOption(options, "amount"); }
-            else { cmdData.userId = getOption(options, "userid"); }
-            await env.SILK_ROAD_KV.put(`CMD_${commandId}`, JSON.stringify(cmdData));
-            const list = JSON.parse(await env.SILK_ROAD_KV.get("CMD_LIST") || "[]");
-            list.push(commandId);
-            await env.SILK_ROAD_KV.put("CMD_LIST", JSON.stringify(list));
-            return new Response(JSON.stringify({ type: 5 }), { headers: { "Content-Type": "application/json" } });
-        }
-
-        if (path === "/poll") {
-            const list = JSON.parse(await env.SILK_ROAD_KV.get("CMD_LIST") || "[]");
-            if (list.length > 0) {
-                const cmdId = list.shift();
-                const data = await env.SILK_ROAD_KV.get(`CMD_${cmdId}`);
-                await env.SILK_ROAD_KV.put("CMD_LIST", JSON.stringify(list));
-                await env.SILK_ROAD_KV.delete(`CMD_${cmdId}`);
-                return new Response(data, { headers: { "Content-Type": "application/json" } });
-            }
-            return new Response(null, { status: 204 });
-        }
-
-        if (path === "/sync-playtime") { await env.SILK_ROAD_KV.put(`PLAYTIME_${url.searchParams.get("userid")}`, url.searchParams.get("time")); return new Response("OK", { status: 200 }); }
-        if (path === "/get-playtime") { const p = await env.SILK_ROAD_KV.get(`PLAYTIME_${url.searchParams.get("userid")}`) || "0"; return new Response(p, { status: 200 }); }
-        if (path === "/check-existing-code") { const c = await env.SILK_ROAD_KV.get(`CODE_BY_USER_${url.searchParams.get("userid")}`); return new Response(c || "None", { status: 200 }); }
-        if (path === "/store-code") {
-            const code = url.searchParams.get("code"), userId = url.searchParams.get("userid");
-            await env.SILK_ROAD_KV.put(`CODE_${code}`, userId, { expirationTtl: 600 });
-            await env.SILK_ROAD_KV.put(`CODE_BY_USER_${userId}`, code, { expirationTtl: 600 });
-            return new Response("OK", { status: 200 });
-        }
-        if (path === "/check-code") {
-            const originalId = await env.SILK_ROAD_KV.get(`CODE_${url.searchParams.get("code")}`);
-            if (originalId && originalId === url.searchParams.get("userid")) {
-                await env.SILK_ROAD_KV.delete(`CODE_${url.searchParams.get("code")}`);
-                await env.SILK_ROAD_KV.put(`USED_${url.searchParams.get("userid")}`, "true");
-                return new Response("VALID", { status: 200 });
-            }
-            return new Response("INVALID", { status: 403 });
-        }
-
-        return new Response(SILK_ROAD_HTML, { headers: { "Content-Type": "text/html" }, status: 200 });
+        return new Response("Not found", { status: 404 });
     }
 };
-
 
