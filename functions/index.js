@@ -1,24 +1,32 @@
-async function verifyDiscordSignature(request, publicKey) {
-    const signature = request.headers.get('X-Signature-Ed25519');
-    const timestamp = request.headers.get('X-Signature-Timestamp');
-    const body = await request.clone().text();
-    if (!signature || !timestamp) return false;
-    const hexToBytes = (hex) => new Uint8Array(hex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
-    try {
-        const key = await crypto.subtle.importKey('raw', hexToBytes(publicKey), { name: 'NODE-ED25519', namedCurve: 'NODE-ED25519' }, false, ['verify']);
-        const encoder = new TextEncoder();
-        const data = encoder.encode(timestamp + body);
-        const sigBytes = hexToBytes(signature);
-        return await crypto.subtle.verify('NODE-ED25519', key, sigBytes, data);
-    } catch (err) { return false; }
-}
-function getOption(options, name) { const opt = options.find(o => o.name === name); return opt ? opt.value : null; }
-function jsonResponse(data, status = 200, extraHeaders = {}) {
-    return new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json", ...extraHeaders } });
-}
 function sanitizeText(value, maxLen) { if (typeof value !== "string") return ""; return value.trim().slice(0, maxLen); }
 function escapeHtml(str) {
     return String(str).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+function safeJsonForHtml(value) {
+    return JSON.stringify(value)
+        .replace(/</g, "\\u003c")
+        .replace(/>/g, "\\u003e")
+        .replace(/&/g, "\\u0026")
+        .replace(/\u2028/g, "\\u2028")
+        .replace(/\u2029/g, "\\u2029");
+}
+async function readJson(request, maxBytes = 35000) {
+    const length = Number(request.headers.get("Content-Length") || 0);
+    if (length && length > maxBytes) throw new Error("BODY_TOO_LARGE");
+    const text = await request.text();
+    if (new TextEncoder().encode(text).byteLength > maxBytes) throw new Error("BODY_TOO_LARGE");
+    return JSON.parse(text);
+}
+async function rateLimit(request, env, name, limit, windowSeconds) {
+    if (!env.SCRIPTS_KV) return true;
+    const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+    const bucket = Math.floor(Date.now() / (windowSeconds * 1000));
+    const key = `rate:${name}:${ip}:${bucket}`;
+    const raw = await env.SCRIPTS_KV.get(key);
+    const count = raw ? Number(raw) : 0;
+    if (count >= limit) return false;
+    await env.SCRIPTS_KV.put(key, String(count + 1), { expirationTtl: windowSeconds + 30 });
+    return true;
 }
 function sanitizeTags(input) {
     if (!input) return [];
@@ -138,25 +146,25 @@ const FAVICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"
 const SHARED_HEAD = (title, desc, canonical, ogImage = "https://dakait.online/og-image.png") => `
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>${title}</title>
-<meta name="description" content="${desc}"/>
-<link rel="canonical" href="${canonical}"/>
+<title>${escapeHtml(title)}</title>
+<meta name="description" content="${escapeHtml(desc)}"/>
+<link rel="canonical" href="${escapeHtml(canonical)}"/>
 <meta name="robots" content="index, follow"/>
 <meta name="keywords" content="roblox scripts, free roblox scripts, roblox executor scripts, keyless roblox scripts, blox fruits script, grow a garden script, rivals script, lumber tycoon script, dakait"/>
 
 <!-- Open Graph (Discord / WhatsApp / Facebook previews) -->
 <meta property="og:type" content="website"/>
-<meta property="og:title" content="${title}"/>
-<meta property="og:description" content="${desc}"/>
-<meta property="og:url" content="${canonical}"/>
-<meta property="og:image" content="${ogImage}"/>
+<meta property="og:title" content="${escapeHtml(title)}"/>
+<meta property="og:description" content="${escapeHtml(desc)}"/>
+<meta property="og:url" content="${escapeHtml(canonical)}"/>
+<meta property="og:image" content="${escapeHtml(ogImage)}"/>
 <meta property="og:site_name" content="Silk Road Script Hub — dakait.online"/>
 
 <!-- Twitter card -->
 <meta name="twitter:card" content="summary_large_image"/>
-<meta name="twitter:title" content="${title}"/>
-<meta name="twitter:description" content="${desc}"/>
-<meta name="twitter:image" content="${ogImage}"/>
+<meta name="twitter:title" content="${escapeHtml(title)}"/>
+<meta name="twitter:description" content="${escapeHtml(desc)}"/>
+<meta name="twitter:image" content="${escapeHtml(ogImage)}"/>
 
 <!-- Favicon -->
 <link rel="icon" href="/favicon.svg" type="image/svg+xml"/>
@@ -915,7 +923,7 @@ function buildDetailHtml(script, thumbnailUrl) {
     const canonical = `https://dakait.online/scripts/${script.id}`;
 
     // JSON-LD structured data — makes Google show rich results
-    const jsonLd = JSON.stringify({
+    const jsonLd = safeJsonForHtml({
         "@context": "https://schema.org",
         "@type": "SoftwareSourceCode",
         "name": script.title,
@@ -973,6 +981,18 @@ ${SHARED_HEAD(pageTitle, pageDesc.slice(0, 160), canonical, thumbnailUrl || "htt
   .code-line .ln{color:var(--accent-dim);margin-right:14px;user-select:none;}
   .copy-btn{background:var(--accent);color:#1a1305;border:none;font-family:var(--mono);font-weight:700;font-size:12px;padding:8px 16px;border-radius:6px;cursor:pointer;}
   .copy-btn:hover{background:#ffc561;} .copy-btn.copied{background:#5cd98a;}
+  .rating-panel{background:var(--panel);border:1px solid var(--panel-line);border-radius:10px;padding:18px;margin-bottom:16px;}
+  .rating-head{display:flex;justify-content:space-between;gap:16px;align-items:center;flex-wrap:wrap;}
+  .rating-panel h3{font-family:var(--mono);font-size:13px;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted);margin:0 0 6px;}
+  .rating-summary{font-family:var(--mono);font-size:13px;color:var(--text);}
+  .stars{display:flex;gap:2px;}
+  .stars button{border:0;background:none;color:#4a4d55;font-size:25px;line-height:1;padding:2px;cursor:pointer;}
+  .stars button.active,.stars button:hover{color:var(--accent);}
+  .rating-bars{display:flex;flex-direction:column;gap:5px;margin-top:14px;}
+  .rating-row{display:grid;grid-template-columns:42px 1fr 44px;gap:8px;align-items:center;font-family:var(--mono);font-size:10px;color:var(--muted);}
+  .rating-track{height:7px;background:#0a0b0e;border-radius:99px;overflow:hidden;}
+  .rating-fill{height:100%;background:var(--accent);border-radius:99px;}
+  .rating-note{margin:10px 0 0;font-family:var(--mono);font-size:10.5px;color:var(--muted);}
   .comments-panel{background:var(--panel);border:1px solid var(--panel-line);border-radius:10px;padding:18px;}
   .comments-panel h3{font-family:var(--mono);font-size:13px;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted);margin:0 0 14px;}
   .comment{border-bottom:1px dashed var(--panel-line);padding:10px 0;font-size:13.5px;}
@@ -1012,6 +1032,20 @@ ${SHARED_HEAD(pageTitle, pageDesc.slice(0, 160), canonical, thumbnailUrl || "htt
     </div>
     <pre class="code-block" id="codeBlock">${codeHtml}</pre>
   </div>
+  <div class="rating-panel" id="ratingPanel">
+    <div class="rating-head">
+      <div><h3>Community rating</h3><div class="rating-summary" id="ratingSummary">Loading ratings…</div></div>
+      <div class="stars" id="ratingStars" aria-label="Rate this script">
+        <button type="button" data-rating="1" aria-label="1 star">★</button>
+        <button type="button" data-rating="2" aria-label="2 stars">★</button>
+        <button type="button" data-rating="3" aria-label="3 stars">★</button>
+        <button type="button" data-rating="4" aria-label="4 stars">★</button>
+        <button type="button" data-rating="5" aria-label="5 stars">★</button>
+      </div>
+    </div>
+    <div class="rating-bars" id="ratingBars"></div>
+    <p class="rating-note" id="ratingNote">Sign in with Google to rate this script.</p>
+  </div>
   <div class="comments-panel">
     <h3>Comments</h3>
     <div id="commentsList"><p class="no-comments">Loading…</p></div>
@@ -1024,13 +1058,15 @@ ${SHARED_HEAD(pageTitle, pageDesc.slice(0, 160), canonical, thumbnailUrl || "htt
 </div>
 <script>
   const SCRIPT_ID=${JSON.stringify(script.id)};
-  const RAW_CODE=${JSON.stringify(script.code)};
+  const RAW_CODE=${safeJsonForHtml(script.code)};
   const copyBtn=document.getElementById("copyBtn");
   copyBtn.addEventListener("click",async()=>{
     try{ await navigator.clipboard.writeText(RAW_CODE); copyBtn.textContent="Copied"; copyBtn.classList.add("copied"); setTimeout(()=>{copyBtn.textContent="Copy";copyBtn.classList.remove("copied");},1500); }
     catch{ copyBtn.textContent="Press Ctrl+C"; }
   });
   fetch('/api/me').then(r=>r.json()).then(me=>{
+    loggedIn=!!me.loggedIn;
+    if(loggedIn) ratingNote.textContent="Choose a star rating to rate this script.";
     const isOwner=me.loggedIn&&me.sub===${JSON.stringify(script.ownerSub||null)};
     const isAdmin=me.loggedIn&&me.isAdmin;
     if(isOwner||isAdmin) document.getElementById("ownerActions").style.display="flex";
@@ -1042,7 +1078,27 @@ ${SHARED_HEAD(pageTitle, pageDesc.slice(0, 160), canonical, thumbnailUrl || "htt
   }).catch(()=>{});
   function escapeHtml(s){return s.replace(/[&<>"']/g,(c)=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
   function timeAgo(ts){const s=Math.floor((Date.now()-ts)/1000);if(s<60)return"just now";if(s<3600)return Math.floor(s/60)+"m ago";if(s<86400)return Math.floor(s/3600)+"h ago";return Math.floor(s/86400)+"d ago";}
-  const commentsList=document.getElementById("commentsList");
+  const ratingSummary=document.getElementById("ratingSummary");
+  const ratingBars=document.getElementById("ratingBars");
+  const ratingNote=document.getElementById("ratingNote");
+  const ratingButtons=[...document.querySelectorAll("#ratingStars button")];
+  let loggedIn=false;
+  function renderRatings(data){
+    const total=data.total||0, avg=Number(data.average||0);
+    ratingSummary.textContent=total ? (avg.toFixed(1)+"/5 · "+total+" "+(total===1?"rating":"ratings")) : "No ratings yet";
+    ratingBars.innerHTML=[5,4,3,2,1].map(star=>{const count=data.distribution?.[star]||0; const pct=total?Math.round(count*100/total):0; return '<div class="rating-row"><span>'+star+' star'+(star===1?"":"s")+'</span><div class="rating-track"><div class="rating-fill" style="width:'+pct+'%"></div></div><span>'+pct+'%</span></div>';}).join("");
+    ratingButtons.forEach(b=>b.classList.toggle("active", Number(b.dataset.rating)<=Number(data.myRating||0)));
+  }
+  async function loadRatings(){
+    try{const r=await fetch('/api/scripts/'+SCRIPT_ID+'/ratings'); const d=await r.json(); renderRatings(d);}
+    catch{ratingSummary.textContent="Couldn't load ratings.";}
+  }
+  ratingButtons.forEach(btn=>btn.addEventListener("click",async()=>{
+    if(!loggedIn){ratingNote.textContent="Sign in with Google to rate this script."; window.location.href='/auth/login'; return;}
+    const rating=Number(btn.dataset.rating);
+    try{const r=await fetch('/api/scripts/'+SCRIPT_ID+'/ratings',{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({rating})}); const d=await r.json(); if(!r.ok) throw new Error(d.error||"Rating failed"); renderRatings(d); ratingNote.textContent="Your rating is saved. You can change it anytime.";}catch(e){ratingNote.textContent=e.message||"Couldn't save rating.";}
+  }));
+    const commentsList=document.getElementById("commentsList");
   async function loadComments(){
     try{
       const res=await fetch('/api/scripts/'+SCRIPT_ID+'/comments');
@@ -1058,6 +1114,7 @@ ${SHARED_HEAD(pageTitle, pageDesc.slice(0, 160), canonical, thumbnailUrl || "htt
     if(!text) return;
     try{ await fetch('/api/scripts/'+SCRIPT_ID+'/comments',{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({author,text})}); document.getElementById("commentText").value=""; loadComments(); }catch{}
   });
+  loadRatings();
   loadComments();
 </script>
 </body>
@@ -1157,11 +1214,12 @@ async function handleScriptsApi(request, env, path) {
     }
 
     if (path === "/api/scripts" && method === "POST") {
-        let body; try { body = await request.json(); } catch { return jsonResponse({ error: "Invalid JSON body" }, 400); }
+        if (!(await rateLimit(request, env, "upload", 5, 3600))) return jsonResponse({ error: "Too many uploads. Try again later." }, 429);
+        let body; try { body = await readJson(request); } catch (err) { return jsonResponse({ error: err.message === "BODY_TOO_LARGE" ? "Request body too large" : "Invalid JSON body" }, 400); }
         const session = await getSession(request, env);
         const title = sanitizeText(body.title, MAX_TITLE_LENGTH);
         const description = sanitizeText(body.description, MAX_DESC_LENGTH);
-        const username = sanitizeText(body.username, MAX_USERNAME_LENGTH) || (session ? session.name : "anonymous");
+        const username = session ? sanitizeText(session.name, MAX_USERNAME_LENGTH) || "user" : sanitizeText(body.username, MAX_USERNAME_LENGTH) || "anonymous";
         const code = typeof body.code === "string" ? body.code.slice(0, MAX_CODE_LENGTH) : "";
         const hubName = sanitizeText(body.hubName, MAX_HUB_LENGTH);
         const tags = sanitizeTags(body.tags);
@@ -1220,14 +1278,15 @@ async function handleScriptsApi(request, env, path) {
         const raw = await env.SCRIPTS_KV.get(`script:${id}`);
         if (!raw) return jsonResponse({ error: "Not found" }, 404);
         const script = JSON.parse(raw);
-        const masterKey = url.searchParams.get("key");
-        const masterAuthorized = env.DELETE_KEY && masterKey === env.DELETE_KEY;
+        const auth = request.headers.get("Authorization") || "";
+        const masterAuthorized = !!env.DELETE_KEY && auth === `Bearer ${env.DELETE_KEY}`;
         const session = await getSession(request, env);
         const isOwner = session && script.ownerSub && session.sub === script.ownerSub;
         const isAdmin = session && isAdminEmail(env, session.email);
         if (!masterAuthorized && !isOwner && !isAdmin) return jsonResponse({ error: "Unauthorized" }, 401);
         await env.SCRIPTS_KV.delete(`script:${id}`);
         await env.SCRIPTS_KV.delete(`comments:${id}`);
+        await env.SCRIPTS_KV.delete(`ratings:${id}`);
         const index = await getScriptsIndex(env);
         await saveScriptsIndex(env, index.filter(s => s.id !== id));
         return jsonResponse({ deleted: id });
@@ -1240,17 +1299,55 @@ async function handleScriptsApi(request, env, path) {
         return jsonResponse({ comments: comments.sort((a, b) => b.createdAt - a.createdAt) });
     }
     if (commentsMatch && method === "POST") {
+        if (!(await rateLimit(request, env, "comment", 10, 600))) return jsonResponse({ error: "Too many comments. Try again later." }, 429);
         const id = commentsMatch[1];
-        let body; try { body = await request.json(); } catch { return jsonResponse({ error: "Invalid JSON body" }, 400); }
+        const exists = await env.SCRIPTS_KV.get(`script:${id}`);
+        if (!exists) return jsonResponse({ error: "Script not found" }, 404);
+        let body; try { body = await readJson(request, 5000); } catch (err) { return jsonResponse({ error: err.message === "BODY_TOO_LARGE" ? "Request body too large" : "Invalid JSON body" }, 400); }
         const text = sanitizeText(body.text, MAX_COMMENT_LENGTH);
         if (!text) return jsonResponse({ error: "Comment text required" }, 400);
         const session = await getSession(request, env);
-        const author = sanitizeText(body.author, MAX_USERNAME_LENGTH) || (session ? session.name : "anonymous");
+        const author = session ? sanitizeText(session.name, MAX_USERNAME_LENGTH) || "user" : sanitizeText(body.author, MAX_USERNAME_LENGTH) || "anonymous";
         const raw = await env.SCRIPTS_KV.get(`comments:${id}`);
         const comments = raw ? JSON.parse(raw) : [];
         comments.push({ id: crypto.randomUUID(), author, text, createdAt: Date.now() });
         await env.SCRIPTS_KV.put(`comments:${id}`, JSON.stringify(comments.slice(-200)));
         return jsonResponse({ ok: true }, 201);
+    }
+
+
+    const ratingsMatch = path.match(/^\/api\/scripts\/([a-zA-Z0-9-]+)\/ratings$/);
+    if (ratingsMatch && method === "GET") {
+        const id = ratingsMatch[1];
+        const scriptRaw = await env.SCRIPTS_KV.get(`script:${id}`);
+        if (!scriptRaw) return jsonResponse({ error: "Not found" }, 404);
+        const raw = await env.SCRIPTS_KV.get(`ratings:${id}`);
+        const ratings = raw ? JSON.parse(raw) : {};
+        const counts = { 1:0, 2:0, 3:0, 4:0, 5:0 };
+        let total = 0, sum = 0;
+        for (const value of Object.values(ratings)) { const r = Number(value?.rating); if (r >= 1 && r <= 5) { counts[r]++; total++; sum += r; } }
+        const session = await getSession(request, env);
+        const myRating = session?.sub && ratings[session.sub] ? Number(ratings[session.sub].rating) : 0;
+        return jsonResponse({ total, average: total ? sum / total : 0, distribution: counts, myRating });
+    }
+    if (ratingsMatch && method === "POST") {
+        if (!(await rateLimit(request, env, "rating", 20, 600))) return jsonResponse({ error: "Too many rating requests. Try again later." }, 429);
+        const id = ratingsMatch[1];
+        const scriptRaw = await env.SCRIPTS_KV.get(`script:${id}`);
+        if (!scriptRaw) return jsonResponse({ error: "Not found" }, 404);
+        const session = await getSession(request, env);
+        if (!session?.sub) return jsonResponse({ error: "Sign in with Google to rate scripts" }, 401);
+        let body; try { body = await readJson(request, 2000); } catch (err) { return jsonResponse({ error: err.message === "BODY_TOO_LARGE" ? "Request body too large" : "Invalid JSON body" }, 400); }
+        const rating = Number(body.rating);
+        if (!Number.isInteger(rating) || rating < 1 || rating > 5) return jsonResponse({ error: "Rating must be an integer from 1 to 5" }, 400);
+        const raw = await env.SCRIPTS_KV.get(`ratings:${id}`);
+        const ratings = raw ? JSON.parse(raw) : {};
+        ratings[session.sub] = { rating, updatedAt: Date.now() };
+        await env.SCRIPTS_KV.put(`ratings:${id}`, JSON.stringify(ratings));
+        const counts = { 1:0, 2:0, 3:0, 4:0, 5:0 };
+        let total = 0, sum = 0;
+        for (const value of Object.values(ratings)) { const r = Number(value?.rating); if (r >= 1 && r <= 5) { counts[r]++; total++; sum += r; } }
+        return jsonResponse({ total, average: total ? sum / total : 0, distribution: counts, myRating: rating });
     }
 
     return jsonResponse({ error: "Not found" }, 404);
@@ -1315,7 +1412,6 @@ async function buildSitemap(env) {
 export default {
     async fetch(request, env) {
         const url = new URL(request.url);
-        const OWNER_ID = "991408492780986398";
         const path = url.pathname;
 
         // Favicon
@@ -1386,68 +1482,10 @@ export default {
             return resp;
         }
 
-        // Discord bot
-        if (path === "/register-commands") {
-            const commandData = [
-                { name: "finduser", description: "Fetch stats (Owner Only)", options: [{ name: "userid", description: "Target UserID", type: 10, required: true }] },
-                { name: "reward", description: "Admin reward (Owner Only)", options: [{ name: "type", description: "Reward", type: 3, required: true, choices: [{ name: "Dinars", value: "dinars" }, { name: "XP", value: "xp" }] }, { name: "userid", description: "Target UserID", type: 10, required: true }, { name: "amount", description: "Quantity", type: 10, required: true }] },
-                { name: "verify", description: "Get your reward code", options: [{ name: "userid", description: "Your UserID", type: 10, required: true }] }
-            ];
-            const response = await fetch(`https://discord.com/api/v10/applications/1451040870689411193/commands`, { method: "PUT", headers: { "Authorization": `Bot ${env.DISCORD_TOKEN}`, "Content-Type": "application/json" }, body: JSON.stringify(commandData) });
-            return new Response(await response.text(), { status: response.status });
-        }
-
-        if (request.method === "POST" && !path.startsWith("/api/")) {
-            const isValid = await verifyDiscordSignature(request, env.DISCORD_PUBLIC_KEY);
-            if (!isValid) return new Response("Unauthorized", { status: 401 });
-            const interaction = await request.json();
-            if (interaction.type === 1) return new Response(JSON.stringify({ type: 1 }), { headers: { "Content-Type": "application/json" } });
-            const userId = interaction.member.user.id;
-            const cmd = interaction.data.name;
-            const options = interaction.data.options || [];
-            if ((cmd === "finduser" || cmd === "reward") && userId !== OWNER_ID) return new Response(JSON.stringify({ type: 4, data: { content: "❌ Access Denied." } }), { headers: { "Content-Type": "application/json" } });
-            const commandId = Date.now().toString();
-            let cmdData = { command: cmd, token: interaction.token };
-            if (cmd === "reward") { cmdData.type = getOption(options, "type"); cmdData.userId = getOption(options, "userid"); cmdData.amount = getOption(options, "amount"); }
-            else { cmdData.userId = getOption(options, "userid"); }
-            await env.SILK_ROAD_KV.put(`CMD_${commandId}`, JSON.stringify(cmdData));
-            const list = JSON.parse(await env.SILK_ROAD_KV.get("CMD_LIST") || "[]");
-            list.push(commandId);
-            await env.SILK_ROAD_KV.put("CMD_LIST", JSON.stringify(list));
-            return new Response(JSON.stringify({ type: 5 }), { headers: { "Content-Type": "application/json" } });
-        }
-
-        if (path === "/poll") {
-            const list = JSON.parse(await env.SILK_ROAD_KV.get("CMD_LIST") || "[]");
-            if (list.length > 0) {
-                const cmdId = list.shift();
-                const data = await env.SILK_ROAD_KV.get(`CMD_${cmdId}`);
-                await env.SILK_ROAD_KV.put("CMD_LIST", JSON.stringify(list));
-                await env.SILK_ROAD_KV.delete(`CMD_${cmdId}`);
-                return new Response(data, { headers: { "Content-Type": "application/json" } });
-            }
-            return new Response(null, { status: 204 });
-        }
-
-        if (path === "/sync-playtime") { await env.SILK_ROAD_KV.put(`PLAYTIME_${url.searchParams.get("userid")}`, url.searchParams.get("time")); return new Response("OK", { status: 200 }); }
-        if (path === "/get-playtime") { const p = await env.SILK_ROAD_KV.get(`PLAYTIME_${url.searchParams.get("userid")}`) || "0"; return new Response(p, { status: 200 }); }
-        if (path === "/check-existing-code") { const c = await env.SILK_ROAD_KV.get(`CODE_BY_USER_${url.searchParams.get("userid")}`); return new Response(c || "None", { status: 200 }); }
-        if (path === "/store-code") {
-            const code = url.searchParams.get("code"), userId = url.searchParams.get("userid");
-            await env.SILK_ROAD_KV.put(`CODE_${code}`, userId, { expirationTtl: 600 });
-            await env.SILK_ROAD_KV.put(`CODE_BY_USER_${userId}`, code, { expirationTtl: 600 });
-            return new Response("OK", { status: 200 });
-        }
-        if (path === "/check-code") {
-            const originalId = await env.SILK_ROAD_KV.get(`CODE_${url.searchParams.get("code")}`);
-            if (originalId && originalId === url.searchParams.get("userid")) {
-                await env.SILK_ROAD_KV.delete(`CODE_${url.searchParams.get("code")}`);
-                await env.SILK_ROAD_KV.put(`USED_${url.searchParams.get("userid")}`, "true");
-                return new Response("VALID", { status: 200 });
-            }
-            return new Response("INVALID", { status: 403 });
-        }
+        // Discord interaction/bot + Roblox server queue endpoints were intentionally removed.
+        // Discord upload notifications via DISCORD_WEBHOOK_URL remain enabled.
 
         return new Response(SILK_ROAD_HTML, { headers: { "Content-Type": "text/html" }, status: 200 });
     }
 };
+
