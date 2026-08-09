@@ -351,10 +351,14 @@ ${SHARED_HEAD(
   }).catch(() => {});
 
   // Login row
-  fetch('/api/me').then(r => r.json()).then(me => {
+  fetch('/api/me', {credentials:'same-origin', cache:'no-store'}).then(r => r.json()).then(me => {
     const row = document.getElementById('accountRow');
-    if (me.loggedIn) row.innerHTML = '<span class="seal-text" style="opacity:0.75;">Signed in as ' + me.name + '</span><a class="btn" href="/auth/logout">Log out</a>';
-    else row.innerHTML = '<a class="btn" href="/auth/login">Sign in with Google</a>';
+    const name = esc(me.name || '');
+    if (me.loggedIn) {
+      row.innerHTML = '<span class="seal-text" style="opacity:0.75;">Signed in as <b>' + name + '</b>' + (me.isAdmin ? ' · <b style="color:var(--sand)">ADMIN</b>' : '') + '</span><a class="btn" href="/auth/logout">Log out</a>';
+    } else {
+      row.innerHTML = '<a class="btn" href="/auth/login?return=%2F">Sign in with Google</a>';
+    }
   }).catch(() => {});
 
   function toggleInfo() {
@@ -403,7 +407,7 @@ const UPLOAD_HTML = `<!DOCTYPE html>
 <head>
 ${SHARED_HEAD(
     "Upload a Roblox Script — Silk Road Script Hub | dakait.online",
-    "Share your Roblox script with the community. Free, no account required. Drop your script and it goes live instantly.",
+    "Share your Roblox script with the community. Google sign-in is required so every upload has a verified owner.",
     "https://dakait.online/upload-scripts"
 )}
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
@@ -510,7 +514,7 @@ ${SHARED_HEAD(
   <div class="hero">
     <div class="hero-eyebrow">Silk Road · Script Hub</div>
     <h1 class="hero-title">Drop your script.</h1>
-    <p class="hero-sub">Paste it. Tag it. It goes live immediately — no review, no waitlist. Anyone can copy it.</p>
+    <p class="hero-sub">Sign in with Google, paste your script, tag it, and it goes live immediately. Every upload has a verified owner who can manage or delete it.</p>
   </div>
 
   <div class="login-banner" id="loginBanner">Checking…</div>
@@ -584,12 +588,18 @@ ${SHARED_HEAD(
   optKl.addEventListener("click",()=>{ keysys=false; optKl.className="kt-opt active-kl"; optHk.className="kt-opt"; updatePreview(); });
   optHk.addEventListener("click",()=>{ keysys=true; optHk.className="kt-opt active-hk"; optKl.className="kt-opt"; updatePreview(); });
 
-  fetch('/api/me').then(r=>r.json()).then(me=>{
+  fetch('/api/me',{credentials:'same-origin',cache:'no-store'}).then(r=>r.json()).then(me=>{
     const b=document.getElementById("loginBanner");
-    if(me.loggedIn){ b.innerHTML='Signed in as <b>'+esc(me.name)+'</b> — uploads are tied to your account. <a href="/auth/logout">Log out</a>'; document.getElementById("username").value=me.name; }
-    else b.innerHTML='Not signed in — upload anonymously or <a href="/auth/login">Sign in with Google</a> to edit/delete later.';
-    updatePreview();
-  }).catch(()=>{ document.getElementById("loginBanner").textContent=""; });
+    if(me.loggedIn){
+      b.innerHTML='Signed in as <b>'+esc(me.name)+'</b> — this upload will belong to your account. <a href="/auth/logout">Log out</a>';
+      document.getElementById("username").value=me.name;
+      updatePreview();
+    } else {
+      b.innerHTML='🔒 <b>Google sign-in is required to upload.</b> <a href="/auth/login?return=%2Fupload-scripts">Sign in with Google →</a>';
+      document.querySelectorAll('#uform input,#uform textarea,#uform button').forEach(el=>el.disabled=true);
+      setTimeout(()=>{ window.location.href='/auth/login?return=%2Fupload-scripts'; },500);
+    }
+  }).catch(()=>{ document.getElementById("loginBanner").textContent="Please sign in with Google before uploading."; });
 
   function updatePreview(){
     const title=document.getElementById("title").value.trim();
@@ -640,9 +650,19 @@ ${SHARED_HEAD(
 /* ─────────────────── Google OAuth ─────────────────── */
 const REDIRECT_URI = "https://dakait.online/auth/callback";
 
+function safeReturnPath(value) {
+    try {
+        const path = String(value || "/");
+        if (!path.startsWith("/") || path.startsWith("//") || path.includes("\\")) return "/";
+        return path.slice(0, 1000);
+    } catch { return "/"; }
+}
+
 async function handleAuthLogin(request, env) {
+    const url = new URL(request.url);
+    const returnTo = safeReturnPath(url.searchParams.get("return") || "/");
     const state = crypto.randomUUID();
-    await env.SESSIONS_KV.put(`oauthstate:${state}`, "1", { expirationTtl: 600 });
+    await env.SESSIONS_KV.put(`oauthstate:${state}`, JSON.stringify({ returnTo }), { expirationTtl: 600 });
     const params = new URLSearchParams({ client_id: env.GOOGLE_CLIENT_ID, redirect_uri: REDIRECT_URI, response_type: "code", scope: "openid email profile", state, prompt: "select_account" });
     return new Response(null, { status: 302, headers: { Location: `https://accounts.google.com/o/oauth2/v2/auth?${params}` } });
 }
@@ -651,9 +671,12 @@ async function handleAuthCallback(request, env) {
     const url = new URL(request.url);
     const code = url.searchParams.get("code"), state = url.searchParams.get("state");
     if (!code || !state) return new Response("Missing code/state", { status: 400 });
-    const stateOk = await env.SESSIONS_KV.get(`oauthstate:${state}`);
-    if (!stateOk) return new Response("Invalid state", { status: 400 });
+    const stateRaw = await env.SESSIONS_KV.get(`oauthstate:${state}`);
+    if (!stateRaw) return new Response("Invalid state", { status: 400 });
     await env.SESSIONS_KV.delete(`oauthstate:${state}`);
+    let returnTo = "/";
+    try { returnTo = safeReturnPath(JSON.parse(stateRaw).returnTo); } catch { }
+
     const tokenRes = await fetch("https://oauth2.googleapis.com/token", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ code, client_id: env.GOOGLE_CLIENT_ID, client_secret: env.GOOGLE_CLIENT_SECRET, redirect_uri: REDIRECT_URI, grant_type: "authorization_code" }) });
     if (!tokenRes.ok) return new Response("Token exchange failed", { status: 400 });
     const tokenData = await tokenRes.json();
@@ -663,7 +686,11 @@ async function handleAuthCallback(request, env) {
     const sessionId = crypto.randomUUID();
     const session = { sub: profile.sub, email: profile.email, name: profile.name || profile.email, picture: profile.picture || null };
     await env.SESSIONS_KV.put(`session:${sessionId}`, JSON.stringify(session), { expirationTtl: 2592000 });
-    return new Response(null, { status: 302, headers: { Location: "/", "Set-Cookie": `session=${sessionId}; HttpOnly; Secure; Path=/; Max-Age=2592000; SameSite=Lax` } });
+    return new Response(null, { status: 302, headers: {
+        Location: returnTo,
+        "Cache-Control": "no-store",
+        "Set-Cookie": `session=${sessionId}; HttpOnly; Secure; Path=/; Max-Age=2592000; SameSite=Lax`
+    } });
 }
 
 function handleAuthLogout() {
@@ -672,8 +699,15 @@ function handleAuthLogout() {
 
 async function handleApiMe(request, env) {
     const session = await getSession(request, env);
-    if (!session) return jsonResponse({ loggedIn: false });
-    return jsonResponse({ loggedIn: true, sub: session.sub, name: session.name, email: session.email, isAdmin: isAdminEmail(env, session.email) });
+    if (!session) {
+        const response = jsonResponse({ loggedIn: false });
+        response.headers.set("Cache-Control", "no-store");
+        return response;
+    }
+    const admin = isAdminEmail(env, session.email);
+    const response = jsonResponse({ loggedIn: true, sub: session.sub, name: session.name, email: session.email, isAdmin: admin });
+    response.headers.set("Cache-Control", "no-store");
+    return response;
 }
 
 /* ─────────────────── Sitemap (helps Google index every script) ─────────────────── */
