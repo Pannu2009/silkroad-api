@@ -3,14 +3,11 @@ main = "functions/index.js"
 compatibility_date = "2026-06-08"
 compatibility_flags = [ "nodejs_compat" ]
 
-[vars]
-DISCORD_PUBLIC_KEY = "d1750e7d16a519b378c90a87bd8c7e41292d80b80c5f768482a54b2eeb2ae9bd"
-GOOGLE_CLIENT_ID = "183501752300-8b1u4crvbpao36psobnn4qok0hs0mtcm.apps.googleusercontent.com"
-GOOGLE_CLIENT_SECRET = "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"
-ADMIN_EMAILS = "Dakaitajay@gmail.com"
-DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/1465179301170122835/-yg6mbzS083VRRLvDvRWzDJZJW2aXCHH5l8fxTzU6_FYlUY4W3LDA-Rt2k_B-yWnoU0v"
-
-
+# Public config only — secrets live in Cloudflare dashboard
+# (Workers & Pages → silkroad-api → Settings → Variables and Secrets)
+# Secrets already set: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET,
+#                      DISCORD_WEBHOOK_URL, DISCORD_PUBLIC_KEY,
+#                      ADMIN_EMAILS, DELETE_KEY
 
 [[kv_namespaces]]
 binding = "SILK_ROAD_KV"
