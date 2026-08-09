@@ -363,6 +363,9 @@ export async function handleScriptsApi(request, env, path) {
 
     /* ───────────── Upload ───────────── */
     if (path === "/api/scripts" && method === "POST") {
+        const session = await getSession(request, env);
+        if (!session?.sub) return jsonResponse({ error: "Sign in with Google before uploading a script." }, 401);
+
         if (!(await rateLimit(request, env, "upload", 5, 3600))) {
             return jsonResponse({ error: "Too many uploads. Try again later." }, 429);
         }
@@ -376,7 +379,6 @@ export async function handleScriptsApi(request, env, path) {
             }, 400);
         }
 
-        const session = await getSession(request, env);
         const title = sanitizeText(body.title, MAX_TITLE_LENGTH);
         const description = sanitizeText(body.description, MAX_DESC_LENGTH);
         const username = session
@@ -508,13 +510,11 @@ export async function handleScriptsApi(request, env, path) {
         if (!raw) return jsonResponse({ error: "Not found" }, 404);
 
         const script = JSON.parse(raw);
-        const auth = request.headers.get("Authorization") || "";
-        const masterAuthorized = !!env.DELETE_KEY && auth === `Bearer ${env.DELETE_KEY}`;
         const session = await getSession(request, env);
         const isOwner = !!(session?.sub && script.ownerSub && session.sub === script.ownerSub);
         const isAdmin = !!(session?.email && isAdminEmail(env, session.email));
 
-        if (!masterAuthorized && !isOwner && !isAdmin) {
+        if (!isOwner && !isAdmin) {
             return jsonResponse({
                 error: "Unauthorized",
                 reason: session ? `Admin=${isAdmin}, Owner=${isOwner}` : "Not signed in"
@@ -692,7 +692,7 @@ h1{font:700 clamp(32px,6vw,56px)/1 var(--mono);margin:0 0 12px}.hl{color:var(--a
 </head>
 <body>
 <div class="wrap">
-<nav><div class="brand"><a href="/">dakait<span>.online</span></a></div><a class="nav-pill" href="/upload-scripts">+ Drop a script</a></nav>
+<nav><div class="brand"><a href="/">dakait<span>.online</span></a></div><div style="display:flex;gap:7px;align-items:center"><span id="accountNav" class="nav-pill" style="display:none"></span><a class="nav-pill" href="/upload-scripts">+ Drop a script</a></div></nav>
 <section class="hero">
 <div class="eyebrow">Silk Road · Script Hub</div>
 <h1><span class="hl">Loot</span> the gallery.</h1>
@@ -756,6 +756,12 @@ function setSort(v){sort=v;document.querySelectorAll(".tab").forEach(b=>b.classL
 document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>setSort(b.dataset.sort));
 document.querySelectorAll(".filter").forEach(b=>b.onclick=()=>{filter=b.dataset.filter;document.querySelectorAll(".filter").forEach(x=>x.classList.toggle("active",x===b));render()});
 search.oninput=render;
+fetch("/api/me",{credentials:"same-origin",cache:"no-store"}).then(r=>r.json()).then(me=>{
+ const el=document.getElementById("accountNav");
+ el.style.display="inline-block";
+ if(me.loggedIn) el.innerHTML='<span style="color:var(--green)">● '+esc(me.name)+(me.isAdmin?' · ADMIN':'')+'</span> <a href="/auth/logout" style="margin-left:6px;color:var(--muted);text-decoration:none">logout</a>';
+ else el.innerHTML='<a href="/auth/login?return=%2Fscripts" style="color:var(--accent);text-decoration:none">Sign in</a>';
+}).catch(()=>{});
 shimmer();
 fetch("/api/scripts").then(r=>{if(!r.ok)throw new Error();return r.json()}).then(d=>{all=d.scripts||[];render()}).catch(()=>{grid.innerHTML='<div class="empty"><div class="empty-icon">⚠</div><p>Couldn\\'t load scripts. Refresh and try again.</p></div>'});
 </script>
@@ -872,9 +878,10 @@ const copyBtn=document.getElementById("copyBtn");
 copyBtn.onclick=async()=>{try{await navigator.clipboard.writeText(RAW_CODE);copyBtn.textContent="Copied";setTimeout(()=>copyBtn.textContent="Copy",1300)}catch{copyBtn.textContent="Select and copy"}};
 
 let me={loggedIn:false,isAdmin:false,sub:null};
-fetch("/api/me").then(r=>r.json()).then(data=>{
+fetch("/api/me",{credentials:"same-origin",cache:"no-store"}).then(r=>r.json()).then(data=>{
  me=data;
  const ownerSub=${safeJsonForHtml(script.ownerSub||null)};
+ if(me.loggedIn && pendingRating>=1 && pendingRating<=5){ selectRating(pendingRating); history.replaceState({},"",location.pathname); }
  if((me.loggedIn&&me.sub===ownerSub)||(me.loggedIn&&me.isAdmin)){
    document.getElementById("ownerActions").style.display="flex";
  }
@@ -904,7 +911,17 @@ async function loadRatings(){try{const r=await fetch("/api/scripts/"+SCRIPT_ID+"
 const pick=[...document.querySelectorAll("#pickStars button")],pickLabel=document.getElementById("pickLabel");
 let selectedRating=0;
 function selectRating(n){selectedRating=n;pick.forEach(b=>b.classList.toggle("on",Number(b.dataset.rating)<=n));pickLabel.textContent=n?n+"/5":"No rating"}
-pick.forEach(b=>b.onclick=()=>{if(!me.loggedIn){window.location.href="/auth/login";return}selectRating(Number(b.dataset.rating))});
+const pendingRating=Number(new URLSearchParams(location.search).get("rate")||0);
+pick.forEach(b=>b.onclick=()=>{
+ const n=Number(b.dataset.rating);
+ if(!me.loggedIn){
+   const ret=new URL(location.href);
+   ret.searchParams.set("rate",String(n));
+   window.location.href="/auth/login?return="+encodeURIComponent(ret.pathname+ret.search);
+   return;
+ }
+ selectRating(n);
+});
 
 const commentsList=document.getElementById("commentsList");
 function ago(ts){const s=Math.max(0,Math.floor((Date.now()-Number(ts||0))/1000));if(s<60)return"just now";if(s<3600)return Math.floor(s/60)+"m ago";if(s<86400)return Math.floor(s/3600)+"h ago";return Math.floor(s/86400)+"d ago"}
@@ -992,3 +1009,4 @@ export async function prepareScriptForPage(env, id) {
     script.views = await getViews(env, id);
     return script;
 }
+
