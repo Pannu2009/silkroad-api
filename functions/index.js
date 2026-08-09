@@ -1,3 +1,16 @@
+import {
+    GALLERY_HTML,
+    buildDetailHtml,
+    buildEditHtml,
+    canManageScript,
+    getAllScriptSummaries,
+    getRobloxGameInfo,
+    getScript,
+    handleScriptsApi,
+    prepareScriptForPage,
+    recordScriptView
+} from "./scripts.js";
+
 function sanitizeText(value, maxLen) { if (typeof value !== "string") return ""; return value.trim().slice(0, maxLen); }
 function escapeHtml(str) {
     return String(str).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -44,43 +57,6 @@ function renderCodeWithLineNumbers(code) {
     }).join("\n");
 }
 
-const SCRIPTS_INDEX_KEY = "scripts:index";
-const MAX_CODE_LENGTH = 20000;
-const MAX_TITLE_LENGTH = 120;
-const MAX_DESC_LENGTH = 500;
-const MAX_USERNAME_LENGTH = 40;
-const MAX_HUB_LENGTH = 40;
-const MAX_COMMENT_LENGTH = 400;
-
-async function getScriptsIndex(env) { const raw = await env.SCRIPTS_KV.get(SCRIPTS_INDEX_KEY); return raw ? JSON.parse(raw) : []; }
-async function saveScriptsIndex(env, index) { await env.SCRIPTS_KV.put(SCRIPTS_INDEX_KEY, JSON.stringify(index)); }
-
-async function getRobloxGameInfo(env, placeId) {
-    if (!placeId || !/^\d+$/.test(String(placeId))) return null;
-    const cacheKey = `robloxinfo:${placeId}`;
-    const cached = await env.SCRIPTS_KV.get(cacheKey);
-    if (cached) return cached === "NONE" ? null : JSON.parse(cached);
-    try {
-        const uniRes = await fetch(`https://apis.roblox.com/universes/v1/places/${placeId}/universe`);
-        if (!uniRes.ok) { await env.SCRIPTS_KV.put(cacheKey, "NONE", { expirationTtl: 3600 }); return null; }
-        const uniData = await uniRes.json();
-        const universeId = uniData.universeId;
-        if (!universeId) { await env.SCRIPTS_KV.put(cacheKey, "NONE", { expirationTtl: 3600 }); return null; }
-        const [iconRes, gameRes] = await Promise.all([
-            fetch(`https://thumbnails.roblox.com/v1/games/icons?universeIds=${universeId}&size=512x512&format=Png&isCircular=false`),
-            fetch(`https://games.roblox.com/v1/games?universeIds=${universeId}`),
-        ]);
-        const iconData = iconRes.ok ? await iconRes.json() : null;
-        const gameData = gameRes.ok ? await gameRes.json() : null;
-        const imageUrl = iconData?.data?.[0]?.imageUrl || null;
-        const name = gameData?.data?.[0]?.name || null;
-        if (!imageUrl && !name) { await env.SCRIPTS_KV.put(cacheKey, "NONE", { expirationTtl: 3600 }); return null; }
-        const info = { imageUrl, name };
-        await env.SCRIPTS_KV.put(cacheKey, JSON.stringify(info), { expirationTtl: 86400 });
-        return info;
-    } catch (err) { return null; }
-}
-
 function parseCookies(request) {
     const header = request.headers.get("Cookie") || "";
     const out = {};
@@ -96,9 +72,10 @@ async function getSession(request, env) {
     return JSON.parse(raw);
 }
 function isAdminEmail(env, email) {
-    if (!env.ADMIN_EMAILS || !email) return false;
-    const list = env.ADMIN_EMAILS.split(",").map((e) => e.trim().toLowerCase());
-    return list.includes(email.toLowerCase());
+    if (!email) return false;
+    const configured = [env.ADMIN_EMAILS || "", env.ADMIN_EMAIL || ""].join(",");
+    const list = configured.split(/[,\s;]+/).map((e) => e.trim().toLowerCase()).filter(Boolean);
+    return list.includes(String(email).trim().toLowerCase());
 }
 async function sendDiscordWebhook(env, { title, gameName, link, tags, username }) {
     if (!env.DISCORD_WEBHOOK_URL) return;
@@ -421,247 +398,6 @@ ${SHARED_HEAD(
 </html>`;
 
 /* ─────────────────── GALLERY PAGE ─────────────────── */
-const GALLERY_HTML = `<!DOCTYPE html>
-<html lang="en">
-<head>
-${SHARED_HEAD(
-    "Free Roblox Scripts — Silk Road Script Hub | dakait.online",
-    "Browse hundreds of free Roblox scripts for Blox Fruits, Grow a Garden, Rivals, Lumber Tycoon and more. Filter by game, tags, or key system. Keyless scripts updated daily.",
-    "https://dakait.online/scripts"
-)}
-<link rel="preconnect" href="https://fonts.googleapis.com"/>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600;700&display=swap"/>
-<style>
-  :root {
-    --bg: #0a0b0e;
-    --surface: #12141a;
-    --surface2: #1a1d26;
-    --border: #22253000;
-    --border-v: #222530;
-    --text: #e4e6ed;
-    --muted: #7a7f90;
-    --accent: #f5a623;
-    --accent2: #e8913a;
-    --green: #4ecb7a;
-    --red: #f05656;
-    --mono: 'JetBrains Mono', monospace;
-    --sans: 'Inter', sans-serif;
-  }
-  *, *::before, *::after { box-sizing: border-box; }
-  html, body { margin: 0; padding: 0; }
-  body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.5; overflow-x: hidden; }
-
-  /* ── Grain texture overlay ── */
-  body::before {
-    content: '';
-    position: fixed; inset: 0; z-index: 0; pointer-events: none;
-    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
-    opacity: 0.025; mix-blend-mode: overlay;
-  }
-
-  .wrap { max-width: 1100px; margin: 0 auto; padding: 28px 20px 100px; position: relative; z-index: 1; }
-
-  /* ── Nav ── */
-  nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 40px; gap: 12px; flex-wrap: wrap; }
-  .brand { font-family: var(--mono); font-weight: 700; font-size: 13px; letter-spacing: 0.14em; text-transform: uppercase; }
-  .brand a { color: var(--muted); text-decoration: none; }
-  .brand span { color: var(--accent); }
-  .nav-pill { font-family: var(--mono); font-size: 11.5px; letter-spacing: 0.06em; text-transform: uppercase; padding: 8px 16px; border-radius: 100px; border: 1px solid rgba(245,166,35,0.35); color: var(--accent); text-decoration: none; transition: background 0.2s, border-color 0.2s; }
-  .nav-pill:hover { background: rgba(245,166,35,0.1); border-color: var(--accent); }
-
-  /* ── Hero ── */
-  .hero { margin-bottom: 36px; overflow: hidden; }
-  .hero-eyebrow { font-family: var(--mono); font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--accent); margin-bottom: 10px; opacity: 0; animation: fadeSlideUp 0.6s 0.1s cubic-bezier(0.16,1,0.3,1) forwards; }
-  .hero-title { font-family: var(--mono); font-size: clamp(32px, 6vw, 54px); font-weight: 700; line-height: 1; margin: 0 0 12px; letter-spacing: -0.02em; clip-path: inset(0 100% 0 0); animation: revealRight 0.7s 0.25s cubic-bezier(0.77,0,0.18,1) forwards; }
-  .hero-title .hl { color: var(--accent); }
-  .hero-sub { font-size: 15px; color: var(--muted); max-width: 52ch; opacity: 0; animation: fadeSlideUp 0.6s 0.5s cubic-bezier(0.16,1,0.3,1) forwards; }
-
-  @keyframes revealRight { to { clip-path: inset(0 0% 0 0); } }
-  @keyframes fadeSlideUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
-
-  /* ── Search ── */
-  .search-wrap { position: relative; margin-bottom: 16px; opacity: 0; animation: fadeSlideUp 0.5s 0.6s cubic-bezier(0.16,1,0.3,1) forwards; }
-  .search-wrap::before { content: '⌕'; position: absolute; left: 16px; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: 18px; pointer-events: none; }
-  #searchBox { width: 100%; background: var(--surface); border: 1px solid var(--border-v); border-radius: 10px; color: var(--text); padding: 14px 16px 14px 44px; font-family: var(--sans); font-size: 14px; transition: border-color 0.25s, box-shadow 0.25s; outline: none; }
-  #searchBox:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(245,166,35,0.12); }
-  #searchBox::placeholder { color: var(--muted); }
-
-  /* ── Filter pills ── */
-  .filter-row { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 28px; opacity: 0; animation: fadeSlideUp 0.5s 0.7s cubic-bezier(0.16,1,0.3,1) forwards; }
-  .pill-filter { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.05em; text-transform: uppercase; padding: 6px 14px; border-radius: 100px; border: 1px solid var(--border-v); color: var(--muted); background: transparent; cursor: pointer; transition: all 0.2s; }
-  .pill-filter:hover { border-color: var(--accent); color: var(--accent); }
-  .pill-filter.active { background: rgba(245,166,35,0.12); border-color: var(--accent); color: var(--accent); }
-  .pill-filter.kl.active { background: rgba(78,203,122,0.1); border-color: var(--green); color: var(--green); }
-
-  /* ── List header ── */
-  .list-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 18px; }
-  .list-head h2 { font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.15em; color: var(--muted); margin: 0; }
-  #count { font-family: var(--mono); font-size: 11px; color: rgba(245,166,35,0.5); }
-
-  /* ── Grid ── */
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
-  .grid.filtering { opacity: 0; transform: translateY(6px); transition: opacity 0.15s, transform 0.15s; }
-  .grid.settled { opacity: 1; transform: translateY(0); transition: opacity 0.25s, transform 0.25s; }
-
-  /* ── Shimmer ── */
-  @keyframes shimmer { 0% { background-position: -400px 0; } 100% { background-position: 400px 0; } }
-  .skel { height: 310px; border-radius: 14px; background: linear-gradient(90deg, var(--surface) 25%, var(--surface2) 50%, var(--surface) 75%); background-size: 800px 100%; animation: shimmer 1.5s infinite; }
-
-  /* ── Card deal animation ── */
-  @keyframes cardDeal {
-    from { opacity: 0; transform: translateY(20px) rotate(1.5deg) scale(0.97); }
-    to   { opacity: 1; transform: translateY(0)   rotate(0deg)   scale(1); }
-  }
-
-  /* ── Card ── */
-  .card { background: var(--surface); border: 1px solid var(--border-v); border-radius: 14px; overflow: hidden; text-decoration: none; color: var(--text); display: flex; flex-direction:column; position: relative; cursor: pointer; transform-origin: center bottom; transition: transform 0.28s cubic-bezier(0.34,1.56,0.64,1), border-color 0.25s, box-shadow 0.25s; animation: cardDeal 0.45s cubic-bezier(0.16,1,0.3,1) both; }
-  .card:hover { transform: translateY(-6px) scale(1.012); border-color: rgba(245,166,35,0.5); box-shadow: 0 12px 40px rgba(245,166,35,0.1), 0 2px 8px rgba(0,0,0,0.4); }
-  .card:active { transform: translateY(-2px) scale(1.005); }
-
-  /* Shimmer sweep on hover */
-  .card::after { content: ''; position: absolute; inset: 0; background: linear-gradient(115deg, transparent 40%, rgba(245,166,35,0.06) 50%, transparent 60%); transform: translateX(-100%); transition: transform 0.5s ease; pointer-events: none; border-radius: 14px; }
-  .card:hover::after { transform: translateX(100%); }
-
-  .card-img { width: 100%; aspect-ratio: 16/9; object-fit: cover; background: linear-gradient(135deg, #14161d, #0c0d11); }
-  .card-img-ph { width: 100%; aspect-ratio: 16/9; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #14161d, #0c0d11); font-size: 32px; color: rgba(245,166,35,0.2); font-family: var(--mono); }
-
-  .key-badge { position: absolute; top: 10px; right: 10px; font-family: var(--mono); font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; padding: 3px 9px; border-radius: 6px; backdrop-filter: blur(8px); }
-  .key-badge.kl { color: var(--green); background: rgba(10,12,16,0.85); border: 1px solid rgba(78,203,122,0.35); }
-  .key-badge.hk { color: var(--red); background: rgba(10,12,16,0.85); border: 1px solid rgba(240,86,86,0.35); }
-
-  .card-body { padding: 13px 15px 15px; display: flex; flex-direction: column; flex: 1; }
-  .game-label { font-family: var(--mono); font-size: 10px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 4px; opacity: 0.8; }
-  .card-title { font-weight: 700; font-size: 14.5px; margin: 0 0 5px; line-height: 1.3; }
-  .card-desc { color: var(--muted); font-size: 12px; margin: 0 0 10px; flex: 1; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-
-  .tag-row { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 10px; }
-  .tag { font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.04em; padding: 2px 8px; border-radius: 5px; background: rgba(245,166,35,0.09); color: var(--accent); border: 1px solid rgba(245,166,35,0.2); }
-  .tag.hub { background: rgba(78,203,122,0.08); color: var(--green); border-color: rgba(78,203,122,0.22); }
-
-  .card-foot { display: flex; justify-content: space-between; align-items: center; font-size: 11.5px; color: var(--muted); padding-top: 8px; border-top: 1px solid var(--border-v); font-family: var(--mono); }
-  .card-foot .user::before { content: '@'; color: var(--accent); }
-  .view-arrow { color: var(--accent); font-size: 14px; transition: transform 0.2s; }
-  .card:hover .view-arrow { transform: translateX(4px); }
-
-  /* ── Empty state ── */
-  .empty { grid-column: 1/-1; text-align: center; padding: 80px 20px; }
-  .empty-icon { font-size: 48px; margin-bottom: 12px; opacity: 0.3; animation: floatIcon 3s ease-in-out infinite; }
-  @keyframes floatIcon { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-8px)} }
-  .empty p { font-family: var(--mono); font-size: 13px; color: var(--muted); }
-
-  @media(prefers-reduced-motion:reduce){ *, *::before, *::after{animation:none !important;transition:none !important;clip-path:none !important;} }
-  @media(max-width:520px){ .hero-title{font-size:32px;} }
-</style>
-</head>
-<body>
-<div class="wrap">
-  <nav>
-    <div class="brand"><a href="/">dakait<span>.online</span></a></div>
-    <a class="nav-pill" href="/upload-scripts">+ Drop a script</a>
-  </nav>
-
-  <div class="hero">
-    <div class="hero-eyebrow">Silk Road · Script Hub</div>
-    <h1 class="hero-title"><span class="hl">Loot</span> the gallery.</h1>
-    <p class="hero-sub">Scripts for Blox Fruits, Grow a Garden, Rivals, Lumber Tycoon — free, searchable, filterable. Click any card to copy.</p>
-  </div>
-
-  <div class="search-wrap">
-    <input id="searchBox" type="text" placeholder="Search by title, game, tag — e.g. grow a garden autofarm" autocomplete="off" spellcheck="false"/>
-  </div>
-
-  <div class="filter-row">
-    <button class="pill-filter active" data-f="all">All</button>
-    <button class="pill-filter kl" data-f="keyless">Keyless only</button>
-    <button class="pill-filter" data-f="blox">Blox Fruits</button>
-    <button class="pill-filter" data-f="garden">Grow a Garden</button>
-    <button class="pill-filter" data-f="rivals">Rivals</button>
-    <button class="pill-filter" data-f="lumber">Lumber Tycoon</button>
-    <button class="pill-filter" data-f="steal">Steal a Brainrot</button>
-  </div>
-
-  <div class="list-head">
-    <h2>Latest drops</h2>
-    <span id="count"></span>
-  </div>
-  <div id="grid" class="grid"></div>
-</div>
-
-<script>
-  function esc(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
-  function ago(ts){const s=Math.floor((Date.now()-ts)/1000);if(s<60)return"just now";if(s<3600)return Math.floor(s/60)+"m ago";if(s<86400)return Math.floor(s/3600)+"h ago";return Math.floor(s/86400)+"d ago";}
-
-  const grid=document.getElementById("grid"), count=document.getElementById("count"), box=document.getElementById("searchBox");
-  let all=[], filter="all";
-
-  function shimmers(n=8){ grid.innerHTML=Array.from({length:n},()=>'<div class="skel"></div>').join(""); }
-
-  function matches(m){
-    if(filter==="keyless") return !m.keysystem;
-    if(filter==="all") return true;
-    const map={blox:"blox",garden:"garden",rivals:"rivals",lumber:"lumber",steal:"steal"};
-    const hay=[m.title,m.description,m.gameName,...(m.tags||[])].join(" ").toLowerCase();
-    return hay.includes(map[filter]||filter);
-  }
-
-  function render(scripts){
-    grid.classList.remove("settled"); grid.classList.add("filtering");
-    requestAnimationFrame(()=>{
-      requestAnimationFrame(()=>{
-        if(!scripts.length){
-          grid.innerHTML='<div class="empty"><div class="empty-icon">🏜</div><p>Nothing matches — try a different search or filter.</p></div>';
-          grid.classList.remove("filtering"); grid.classList.add("settled"); return;
-        }
-        grid.innerHTML="";
-        scripts.forEach((m,i)=>{
-          const a=document.createElement("a");
-          a.href="/scripts/"+m.id; a.className="card";
-          a.style.animationDelay=(i*45)+"ms";
-          const img=m.placeId
-            ? '<img class="card-img" src="/api/roblox-thumbnail?placeId='+encodeURIComponent(m.placeId)+'" loading="lazy" alt="'+esc(m.title)+'" onerror="this.outerHTML=\'<div class=\\"card-img-ph\\">⌗</div>\'"/>'
-            : '<div class="card-img-ph">⌗</div>';
-          const badge=m.keysystem?'<span class="key-badge hk">Key</span>':'<span class="key-badge kl">Keyless</span>';
-          const tags=(m.tags||[]).map(t=>'<span class="tag">'+esc(t)+'</span>').join("");
-          const hub=m.hubName?'<span class="tag hub">'+esc(m.hubName)+'</span>':"";
-          const game=m.gameName?'<div class="game-label">'+esc(m.gameName)+'</div>':"";
-          a.innerHTML=img+badge+'<div class="card-body">'+game+'<p class="card-title">'+esc(m.title)+'</p><p class="card-desc">'+esc(m.description||"No description.")+'</p><div class="tag-row">'+hub+tags+'</div><div class="card-foot"><span class="user">'+esc(m.username)+'&nbsp;·&nbsp;'+ago(m.createdAt)+'</span><span class="view-arrow">→</span></div></div>';
-          grid.appendChild(a);
-        });
-        grid.classList.remove("filtering"); grid.classList.add("settled");
-      });
-    });
-  }
-
-  function applyFilters(){
-    const q=box.value.trim().toLowerCase();
-    let list=all.filter(matches);
-    if(q) list=list.filter(m=>[m.title,m.description,m.gameName,m.hubName,...(m.tags||[])].join(" ").toLowerCase().includes(q));
-    count.textContent=list.length+(list.length===1?" script":" scripts");
-    render(list);
-  }
-
-  async function load(){
-    shimmers();
-    try{
-      const r=await fetch("/api/scripts"), d=await r.json();
-      all=(d.scripts||[]);
-      applyFilters();
-    }catch{ grid.innerHTML='<div class="empty"><div class="empty-icon">🏜</div><p>Couldn\'t load scripts — try refreshing.</p></div>'; }
-  }
-
-  box.addEventListener("input",applyFilters);
-  document.querySelectorAll(".pill-filter").forEach(b=>{
-    b.addEventListener("click",()=>{
-      document.querySelectorAll(".pill-filter").forEach(x=>x.classList.remove("active"));
-      b.classList.add("active"); filter=b.dataset.f; applyFilters();
-    });
-  });
-
-  load();
-</script>
-</body>
-</html>`;
-
 const UPLOAD_HTML = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -901,458 +637,6 @@ ${SHARED_HEAD(
 </body>
 </html>`;
 
-function buildDetailHtml(script, thumbnailUrl) {
-    const safeTitle = escapeHtml(script.title);
-    const safeDesc = escapeHtml(script.description || "No description provided.");
-    const safeUser = escapeHtml(script.username || "anonymous");
-    const safeGame = script.gameName ? escapeHtml(script.gameName) : null;
-    const codeHtml = renderCodeWithLineNumbers(script.code);
-    const tags = script.tags || [];
-    const tagPills = tags.map(t => `<span class="pill">${escapeHtml(t)}</span>`).join("");
-    const hubPill = script.hubName ? `<span class="pill hub">${escapeHtml(script.hubName)}</span>` : "";
-    const keyBadge = script.keysystem ? `<span class="key-badge haskey">Key System</span>` : `<span class="key-badge keyless">Keyless / No Key</span>`;
-    const imgBlock = thumbnailUrl ? `<img class="hero-img" src="${thumbnailUrl}" alt="${safeTitle} thumbnail"/>` : `<div class="hero-img placeholder">⌗</div>`;
-
-    // SEO: descriptive title Google will show in results
-    const pageTitle = safeGame
-        ? `${script.title} — ${script.gameName} Script | dakait.online`
-        : `${script.title} | Silk Road Script Hub — dakait.online`;
-    const pageDesc = safeGame
-        ? `Free ${script.gameName} script. ${(script.description || "").slice(0, 120)}. ${script.keysystem ? "Requires key." : "Keyless."} Copy and use instantly.`
-        : `${(script.description || script.title).slice(0, 155)}. Free Roblox script on dakait.online.`;
-    const canonical = `https://dakait.online/scripts/${script.id}`;
-
-    // JSON-LD structured data — makes Google show rich results
-    const jsonLd = safeJsonForHtml({
-        "@context": "https://schema.org",
-        "@type": "SoftwareSourceCode",
-        "name": script.title,
-        "description": (script.description || script.title).slice(0, 250),
-        "url": canonical,
-        "programmingLanguage": "Lua",
-        "author": { "@type": "Person", "name": script.username || "anonymous" },
-        "dateCreated": new Date(script.createdAt).toISOString(),
-        "codeRepository": "https://dakait.online/scripts",
-        "keywords": ["roblox script", "roblox", script.gameName, ...(script.tags || [])].filter(Boolean).join(", "),
-        "isAccessibleForFree": true,
-        "publisher": { "@type": "Organization", "name": "Silk Road Script Hub", "url": "https://dakait.online" },
-    });
-
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-${SHARED_HEAD(pageTitle, pageDesc.slice(0, 160), canonical, thumbnailUrl || "https://dakait.online/og-image.png")}
-<script type="application/ld+json">${jsonLd}<\/script>
-<link rel="preconnect" href="https://fonts.googleapis.com"/>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600;700&display=swap"/>
-<style>
-  :root{ --bg:#0c0d10; --panel:#14161b; --panel-line:#232631; --text:#e8e9ed; --muted:#8b8f9c; --accent:#ffb238; --accent-dim:#6b5326; --green:#5cd98a; --red:#ff5d5d; --mono:'JetBrains Mono',monospace; --sans:'Inter',sans-serif; }
-  *{box-sizing:border-box;} html,body{margin:0;padding:0;}
-  body{background:var(--bg);color:var(--text);font-family:var(--sans);line-height:1.6;}
-  .wrap{max-width:820px;margin:0 auto;padding:32px 20px 80px;}
-  header.page-head{display:flex;align-items:baseline;justify-content:space-between;gap:16px;margin-bottom:24px;flex-wrap:wrap;}
-  .brand{font-family:var(--mono);font-weight:700;font-size:14px;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted);}
-  .brand a{color:var(--muted);text-decoration:none;} .brand span{color:var(--accent);}
-  .nav-link{font-family:var(--mono);font-size:12px;color:var(--accent);text-decoration:none;}
-  .hero{display:flex;gap:20px;margin-bottom:16px;flex-wrap:wrap;}
-  .hero-img{width:120px;height:120px;border-radius:12px;object-fit:cover;border:1px solid var(--panel-line);flex-shrink:0;}
-  .hero-img.placeholder{display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#1a1c22,#0e0f12);color:var(--accent-dim);font-size:36px;}
-  .hero-text{flex:1;min-width:200px;}
-  .game-tag{font-family:var(--mono);font-size:11.5px;color:var(--accent);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px;}
-  h1{font-family:var(--mono);font-size:clamp(22px,4vw,30px);font-weight:700;margin:0 0 8px;}
-  .meta{font-size:12.5px;color:var(--muted);font-family:var(--mono);}
-  .meta .user::before{content:"@";color:var(--accent);}
-  .desc{color:var(--text);opacity:0.85;font-size:14.5px;margin-top:10px;}
-  .key-badge{font-family:var(--mono);font-size:10.5px;letter-spacing:0.06em;text-transform:uppercase;padding:4px 10px;border-radius:6px;display:inline-block;margin-top:8px;}
-  .key-badge.keyless{color:var(--green);border:1px solid rgba(92,217,138,0.4);background:rgba(92,217,138,0.06);}
-  .key-badge.haskey{color:var(--red);border:1px solid rgba(255,93,93,0.4);background:rgba(255,93,93,0.06);}
-  .tag-row{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 4px;}
-  .pill{font-family:var(--mono);font-size:10.5px;letter-spacing:0.04em;padding:3px 9px;border-radius:5px;background:rgba(255,178,56,0.1);color:var(--accent);border:1px solid rgba(255,178,56,0.25);}
-  .pill.hub{background:rgba(92,217,138,0.08);color:var(--green);border-color:rgba(92,217,138,0.25);}
-  .owner-actions{display:flex;gap:8px;margin-top:12px;}
-  .owner-actions a,.owner-actions button{font-family:var(--mono);font-size:11.5px;padding:6px 12px;border-radius:6px;text-decoration:none;cursor:pointer;border:1px solid var(--panel-line);background:transparent;color:var(--text);}
-  .owner-actions .edit-link{color:var(--accent);border-color:var(--accent-dim);}
-  .owner-actions .delete-btn{color:var(--red);border-color:rgba(255,93,93,0.3);}
-  .code-panel{background:var(--panel);border:1px solid var(--panel-line);border-radius:10px;padding:18px;margin-bottom:28px;}
-  .code-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;}
-  .code-head span{font-family:var(--mono);font-size:12px;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted);}
-  pre.code-block{background:#0a0b0e;border:1px solid var(--panel-line);border-radius:6px;padding:14px 0;overflow-x:auto;font-family:var(--mono);font-size:12.5px;color:#c9e6c4;margin:0;max-height:480px;}
-  .code-line{display:block;padding:0 14px;white-space:pre;}
-  .code-line .ln{color:var(--accent-dim);margin-right:14px;user-select:none;}
-  .copy-btn{background:var(--accent);color:#1a1305;border:none;font-family:var(--mono);font-weight:700;font-size:12px;padding:8px 16px;border-radius:6px;cursor:pointer;}
-  .copy-btn:hover{background:#ffc561;} .copy-btn.copied{background:#5cd98a;}
-  .rating-panel{background:var(--panel);border:1px solid var(--panel-line);border-radius:10px;padding:18px;margin-bottom:16px;}
-  .rating-head{display:flex;justify-content:space-between;gap:16px;align-items:center;flex-wrap:wrap;}
-  .rating-panel h3{font-family:var(--mono);font-size:13px;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted);margin:0 0 6px;}
-  .rating-summary{font-family:var(--mono);font-size:13px;color:var(--text);}
-  .stars{display:flex;gap:2px;}
-  .stars button{border:0;background:none;color:#4a4d55;font-size:25px;line-height:1;padding:2px;cursor:pointer;}
-  .stars button.active,.stars button:hover{color:var(--accent);}
-  .rating-bars{display:flex;flex-direction:column;gap:5px;margin-top:14px;}
-  .rating-row{display:grid;grid-template-columns:42px 1fr 44px;gap:8px;align-items:center;font-family:var(--mono);font-size:10px;color:var(--muted);}
-  .rating-track{height:7px;background:#0a0b0e;border-radius:99px;overflow:hidden;}
-  .rating-fill{height:100%;background:var(--accent);border-radius:99px;}
-  .rating-note{margin:10px 0 0;font-family:var(--mono);font-size:10.5px;color:var(--muted);}
-  .comments-panel{background:var(--panel);border:1px solid var(--panel-line);border-radius:10px;padding:18px;}
-  .comments-panel h3{font-family:var(--mono);font-size:13px;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted);margin:0 0 14px;}
-  .comment{border-bottom:1px dashed var(--panel-line);padding:10px 0;font-size:13.5px;}
-  .comment:last-child{border-bottom:none;}
-  .comment .c-meta{font-family:var(--mono);font-size:11px;color:var(--accent-dim);margin-bottom:3px;}
-  .comment-form{margin-top:14px;display:flex;flex-direction:column;gap:8px;}
-  .comment-form input,.comment-form textarea{background:#0a0b0e;border:1px solid var(--panel-line);border-radius:6px;color:var(--text);padding:9px 11px;font-family:var(--sans);font-size:13px;}
-  .comment-form button{align-self:flex-start;background:var(--accent);color:#1a1305;border:none;font-family:var(--mono);font-weight:700;font-size:12px;padding:8px 16px;border-radius:6px;cursor:pointer;}
-  .no-comments{color:var(--muted);font-size:13px;font-family:var(--mono);}
-</style>
-</head>
-<body>
-<div class="wrap">
-  <header class="page-head">
-    <div class="brand"><a href="/">dakait<span>.online</span></a></div>
-    <a class="nav-link" href="/scripts">← Back to all scripts</a>
-  </header>
-  <div class="hero">
-    ${imgBlock}
-    <div class="hero-text">
-      ${safeGame ? `<div class="game-tag">For: ${safeGame}</div>` : ""}
-      <h1>${safeTitle}</h1>
-      <div class="meta"><span class="user">${safeUser}</span></div>
-      <div class="tag-row">${hubPill}${tagPills}</div>
-      ${keyBadge}
-      <p class="desc">${safeDesc}</p>
-      <div class="owner-actions" id="ownerActions" style="display:none;">
-        <a class="edit-link" href="/scripts/${script.id}/edit">Edit</a>
-        <button class="delete-btn" id="deleteBtn">Delete</button>
-      </div>
-    </div>
-  </div>
-  <div class="code-panel">
-    <div class="code-head">
-      <span>script.lua</span>
-      <button class="copy-btn" id="copyBtn">Copy</button>
-    </div>
-    <pre class="code-block" id="codeBlock">${codeHtml}</pre>
-  </div>
-  <div class="rating-panel" id="ratingPanel">
-    <div class="rating-head">
-      <div><h3>Community rating</h3><div class="rating-summary" id="ratingSummary">Loading ratings…</div></div>
-      <div class="stars" id="ratingStars" aria-label="Rate this script">
-        <button type="button" data-rating="1" aria-label="1 star">★</button>
-        <button type="button" data-rating="2" aria-label="2 stars">★</button>
-        <button type="button" data-rating="3" aria-label="3 stars">★</button>
-        <button type="button" data-rating="4" aria-label="4 stars">★</button>
-        <button type="button" data-rating="5" aria-label="5 stars">★</button>
-      </div>
-    </div>
-    <div class="rating-bars" id="ratingBars"></div>
-    <p class="rating-note" id="ratingNote">Sign in with Google to rate this script.</p>
-  </div>
-  <div class="comments-panel">
-    <h3>Comments</h3>
-    <div id="commentsList"><p class="no-comments">Loading…</p></div>
-    <form class="comment-form" id="commentForm">
-      <input type="text" id="commentName" maxlength="40" placeholder="Your name (optional)"/>
-      <textarea id="commentText" maxlength="400" rows="2" placeholder="Leave a comment — does it still work for you?" required></textarea>
-      <button type="submit">Post comment</button>
-    </form>
-  </div>
-</div>
-<script>
-  const SCRIPT_ID=${JSON.stringify(script.id)};
-  const RAW_CODE=${safeJsonForHtml(script.code)};
-  const copyBtn=document.getElementById("copyBtn");
-  copyBtn.addEventListener("click",async()=>{
-    try{ await navigator.clipboard.writeText(RAW_CODE); copyBtn.textContent="Copied"; copyBtn.classList.add("copied"); setTimeout(()=>{copyBtn.textContent="Copy";copyBtn.classList.remove("copied");},1500); }
-    catch{ copyBtn.textContent="Press Ctrl+C"; }
-  });
-  fetch('/api/me').then(r=>r.json()).then(me=>{
-    loggedIn=!!me.loggedIn;
-    if(loggedIn) ratingNote.textContent="Choose a star rating to rate this script.";
-    const isOwner=me.loggedIn&&me.sub===${JSON.stringify(script.ownerSub||null)};
-    const isAdmin=me.loggedIn&&me.isAdmin;
-    if(isOwner||isAdmin) document.getElementById("ownerActions").style.display="flex";
-    document.getElementById("deleteBtn").addEventListener("click",async()=>{
-      if(!confirm("Delete this script?")) return;
-      const res=await fetch('/api/scripts/'+SCRIPT_ID,{method:"DELETE"});
-      if(res.ok) window.location.href="/scripts"; else alert("Couldn't delete.");
-    });
-  }).catch(()=>{});
-  function escapeHtml(s){return s.replace(/[&<>"']/g,(c)=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
-  function timeAgo(ts){const s=Math.floor((Date.now()-ts)/1000);if(s<60)return"just now";if(s<3600)return Math.floor(s/60)+"m ago";if(s<86400)return Math.floor(s/3600)+"h ago";return Math.floor(s/86400)+"d ago";}
-  const ratingSummary=document.getElementById("ratingSummary");
-  const ratingBars=document.getElementById("ratingBars");
-  const ratingNote=document.getElementById("ratingNote");
-  const ratingButtons=[...document.querySelectorAll("#ratingStars button")];
-  let loggedIn=false;
-  function renderRatings(data){
-    const total=data.total||0, avg=Number(data.average||0);
-    ratingSummary.textContent=total ? (avg.toFixed(1)+"/5 · "+total+" "+(total===1?"rating":"ratings")) : "No ratings yet";
-    ratingBars.innerHTML=[5,4,3,2,1].map(star=>{const count=data.distribution?.[star]||0; const pct=total?Math.round(count*100/total):0; return '<div class="rating-row"><span>'+star+' star'+(star===1?"":"s")+'</span><div class="rating-track"><div class="rating-fill" style="width:'+pct+'%"></div></div><span>'+pct+'%</span></div>';}).join("");
-    ratingButtons.forEach(b=>b.classList.toggle("active", Number(b.dataset.rating)<=Number(data.myRating||0)));
-  }
-  async function loadRatings(){
-    try{const r=await fetch('/api/scripts/'+SCRIPT_ID+'/ratings'); const d=await r.json(); renderRatings(d);}
-    catch{ratingSummary.textContent="Couldn't load ratings.";}
-  }
-  ratingButtons.forEach(btn=>btn.addEventListener("click",async()=>{
-    if(!loggedIn){ratingNote.textContent="Sign in with Google to rate this script."; window.location.href='/auth/login'; return;}
-    const rating=Number(btn.dataset.rating);
-    try{const r=await fetch('/api/scripts/'+SCRIPT_ID+'/ratings',{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({rating})}); const d=await r.json(); if(!r.ok) throw new Error(d.error||"Rating failed"); renderRatings(d); ratingNote.textContent="Your rating is saved. You can change it anytime.";}catch(e){ratingNote.textContent=e.message||"Couldn't save rating.";}
-  }));
-    const commentsList=document.getElementById("commentsList");
-  async function loadComments(){
-    try{
-      const res=await fetch('/api/scripts/'+SCRIPT_ID+'/comments');
-      const data=await res.json(); const comments=data.comments||[];
-      if(comments.length===0){commentsList.innerHTML='<p class="no-comments">No comments yet.</p>';return;}
-      commentsList.innerHTML=comments.map(c=>'<div class="comment"><div class="c-meta">'+escapeHtml(c.author||"anonymous")+' · '+timeAgo(c.createdAt)+'</div>'+escapeHtml(c.text)+'</div>').join('');
-    }catch{commentsList.innerHTML='<p class="no-comments">Couldn\'t load comments.</p>';}
-  }
-  document.getElementById("commentForm").addEventListener("submit",async(e)=>{
-    e.preventDefault();
-    const author=document.getElementById("commentName").value.trim();
-    const text=document.getElementById("commentText").value.trim();
-    if(!text) return;
-    try{ await fetch('/api/scripts/'+SCRIPT_ID+'/comments',{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({author,text})}); document.getElementById("commentText").value=""; loadComments(); }catch{}
-  });
-  loadRatings();
-  loadComments();
-</script>
-</body>
-</html>`;
-}
-
-/* ─────────────────── EDIT PAGE ─────────────────── */
-function buildEditHtml(script) {
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-${SHARED_HEAD("Edit Script — dakait.online", "Edit your script on Silk Road Script Hub.", `https://dakait.online/scripts/${script.id}/edit`)}
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600;700&display=swap"/>
-<meta name="robots" content="noindex"/>
-<style>
-  :root{--bg:#0c0d10;--panel:#14161b;--panel-line:#232631;--text:#e8e9ed;--muted:#8b8f9c;--accent:#ffb238;--danger:#ff5d5d;--mono:'JetBrains Mono',monospace;--sans:'Inter',sans-serif;}
-  *{box-sizing:border-box;} html,body{margin:0;padding:0;}
-  body{background:var(--bg);color:var(--text);font-family:var(--sans);line-height:1.5;}
-  .wrap{max-width:680px;margin:0 auto;padding:32px 20px 80px;}
-  .brand{font-family:var(--mono);font-weight:700;font-size:14px;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted);margin-bottom:20px;}
-  .brand a{color:var(--muted);text-decoration:none;} .brand span{color:var(--accent);}
-  h1{font-family:var(--mono);font-size:26px;margin:0 0 18px;}
-  .panel{background:var(--panel);border:1px solid var(--panel-line);border-radius:10px;padding:22px;}
-  label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px;margin-top:14px;text-transform:uppercase;letter-spacing:0.06em;}
-  label:first-of-type{margin-top:0;}
-  input[type="text"],textarea{width:100%;background:#0a0b0e;border:1px solid var(--panel-line);border-radius:6px;color:var(--text);padding:10px 12px;font-family:var(--sans);font-size:14px;}
-  textarea#code{font-family:var(--mono);font-size:13px;min-height:180px;}
-  .row{display:flex;gap:14px;flex-wrap:wrap;} .row>div{flex:1;min-width:180px;}
-  .submit-btn{margin-top:18px;background:var(--accent);color:#1a1305;border:none;font-family:var(--mono);font-weight:700;font-size:13px;letter-spacing:0.05em;text-transform:uppercase;padding:11px 20px;border-radius:6px;cursor:pointer;}
-  .form-msg{font-size:13px;margin-top:10px;}
-  .form-msg.error{color:var(--danger);} .form-msg.ok{color:#5cd98a;}
-  .toggle-group{display:flex;gap:10px;margin-top:6px;}
-  .toggle-opt{flex:1;text-align:center;padding:10px;border:1px solid var(--panel-line);border-radius:6px;cursor:pointer;font-size:12.5px;font-family:var(--mono);color:var(--muted);}
-  .toggle-opt.active.keyless{border-color:#5cd98a;color:#5cd98a;}
-  .toggle-opt.active.haskey{border-color:var(--danger);color:var(--danger);}
-</style>
-</head>
-<body>
-<div class="wrap">
-  <div class="brand"><a href="/">dakait<span>.online</span></a></div>
-  <h1>Edit Script</h1>
-  <section class="panel">
-    <form id="edit-form">
-      <label for="title">Title</label>
-      <input type="text" id="title" maxlength="120" value="${escapeHtml(script.title)}" required/>
-      <div class="row">
-        <div><label for="placeId">Roblox Place ID</label><input type="text" id="placeId" value="${escapeHtml(script.placeId||"")}"/></div>
-        <div><label for="hubName">Hub name</label><input type="text" id="hubName" value="${escapeHtml(script.hubName||"")}"/></div>
-      </div>
-      <label for="tags">Tags (comma separated)</label>
-      <input type="text" id="tags" value="${escapeHtml((script.tags||[]).join(", "))}"/>
-      <label>Key system</label>
-      <div class="toggle-group">
-        <div class="toggle-opt keyless" id="optKeyless">Keyless / No key</div>
-        <div class="toggle-opt haskey" id="optHaskey">Has key system</div>
-      </div>
-      <label for="description">Description</label>
-      <textarea id="description" maxlength="500" rows="2">${escapeHtml(script.description||"")}</textarea>
-      <label for="code">Script code</label>
-      <textarea id="code">${escapeHtml(script.code)}</textarea>
-      <button type="submit" class="submit-btn">Save changes</button>
-      <p class="form-msg" id="form-msg"></p>
-    </form>
-  </section>
-</div>
-<script>
-  let keysystemVal=${script.keysystem?"true":"false"};
-  const optKeyless=document.getElementById("optKeyless"),optHaskey=document.getElementById("optHaskey");
-  function refreshToggle(){optKeyless.classList.toggle("active",!keysystemVal);optHaskey.classList.toggle("active",keysystemVal);}
-  optKeyless.addEventListener("click",()=>{keysystemVal=false;refreshToggle();});
-  optHaskey.addEventListener("click",()=>{keysystemVal=true;refreshToggle();});
-  refreshToggle();
-  document.getElementById("edit-form").addEventListener("submit",async(e)=>{
-    e.preventDefault();
-    const formMsg=document.getElementById("form-msg"); formMsg.textContent=""; formMsg.className="form-msg";
-    try{
-      const res=await fetch('/api/scripts/${script.id}',{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({title:document.getElementById("title").value.trim(),placeId:document.getElementById("placeId").value.trim()||null,hubName:document.getElementById("hubName").value.trim(),tags:document.getElementById("tags").value.trim(),description:document.getElementById("description").value.trim(),code:document.getElementById("code").value,keysystem:keysystemVal})});
-      if(!res.ok){const err=await res.json();throw new Error(err.error||"Save failed");}
-      formMsg.textContent="Saved."; formMsg.className="form-msg ok";
-      setTimeout(()=>{window.location.href='/scripts/${script.id}';},700);
-    }catch(err){formMsg.textContent=err.message||"Something went wrong.";formMsg.className="form-msg error";}
-  });
-</script>
-</body>
-</html>`;
-}
-
-/* ─────────────────── Scripts API ─────────────────── */
-async function handleScriptsApi(request, env, path) {
-    const method = request.method;
-    const url = new URL(request.url);
-    if (method === "OPTIONS") return new Response(null, { status: 204, headers: { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS", "Access-Control-Allow-Headers": "Content-Type" } });
-
-    if (path === "/api/scripts" && method === "GET") {
-        const index = await getScriptsIndex(env);
-        return jsonResponse({ scripts: [...index].sort((a, b) => b.createdAt - a.createdAt) });
-    }
-
-    if (path === "/api/scripts" && method === "POST") {
-        if (!(await rateLimit(request, env, "upload", 5, 3600))) return jsonResponse({ error: "Too many uploads. Try again later." }, 429);
-        let body; try { body = await readJson(request); } catch (err) { return jsonResponse({ error: err.message === "BODY_TOO_LARGE" ? "Request body too large" : "Invalid JSON body" }, 400); }
-        const session = await getSession(request, env);
-        const title = sanitizeText(body.title, MAX_TITLE_LENGTH);
-        const description = sanitizeText(body.description, MAX_DESC_LENGTH);
-        const username = session ? sanitizeText(session.name, MAX_USERNAME_LENGTH) || "user" : sanitizeText(body.username, MAX_USERNAME_LENGTH) || "anonymous";
-        const code = typeof body.code === "string" ? body.code.slice(0, MAX_CODE_LENGTH) : "";
-        const hubName = sanitizeText(body.hubName, MAX_HUB_LENGTH);
-        const tags = sanitizeTags(body.tags);
-        const keysystem = !!body.keysystem;
-        let placeId = body.placeId ? String(body.placeId).trim() : null;
-        if (placeId && !/^\d+$/.test(placeId)) placeId = null;
-        if (!title || !code) return jsonResponse({ error: "title and code are required" }, 400);
-        let gameName = null;
-        if (placeId) { const info = await getRobloxGameInfo(env, placeId); if (info) gameName = info.name; }
-        const id = crypto.randomUUID();
-        const createdAt = Date.now();
-        const record = { id, title, description, username, code, placeId, gameName, hubName, tags, keysystem, createdAt, ownerSub: session ? session.sub : null };
-        await env.SCRIPTS_KV.put(`script:${id}`, JSON.stringify(record));
-        const index = await getScriptsIndex(env);
-        index.push({ id, title, description, username, placeId, gameName, hubName, tags, keysystem, createdAt, length: code.length });
-        await saveScriptsIndex(env, index);
-        await sendDiscordWebhook(env, { title, gameName, link: `https://dakait.online/scripts/${id}`, tags, username });
-        return jsonResponse({ script: record }, 201);
-    }
-
-    const singleMatch = path.match(/^\/api\/scripts\/([a-zA-Z0-9-]+)$/);
-    if (singleMatch && method === "GET") {
-        const raw = await env.SCRIPTS_KV.get(`script:${singleMatch[1]}`);
-        if (!raw) return jsonResponse({ error: "Not found" }, 404);
-        return jsonResponse({ script: JSON.parse(raw) });
-    }
-    if (singleMatch && method === "PUT") {
-        const id = singleMatch[1];
-        const raw = await env.SCRIPTS_KV.get(`script:${id}`);
-        if (!raw) return jsonResponse({ error: "Not found" }, 404);
-        const script = JSON.parse(raw);
-        const session = await getSession(request, env);
-        const isOwner = session && script.ownerSub && session.sub === script.ownerSub;
-        const isAdmin = session && isAdminEmail(env, session.email);
-        if (!isOwner && !isAdmin) return jsonResponse({ error: "Unauthorized" }, 401);
-        let body; try { body = await request.json(); } catch { return jsonResponse({ error: "Invalid JSON body" }, 400); }
-        if (typeof body.title === "string") script.title = sanitizeText(body.title, MAX_TITLE_LENGTH);
-        if (typeof body.description === "string") script.description = sanitizeText(body.description, MAX_DESC_LENGTH);
-        if (typeof body.code === "string") script.code = body.code.slice(0, MAX_CODE_LENGTH);
-        if (typeof body.hubName === "string") script.hubName = sanitizeText(body.hubName, MAX_HUB_LENGTH);
-        if (body.tags !== undefined) script.tags = sanitizeTags(body.tags);
-        if (body.keysystem !== undefined) script.keysystem = !!body.keysystem;
-        if (body.placeId !== undefined) {
-            let placeId = body.placeId ? String(body.placeId).trim() : null;
-            if (placeId && !/^\d+$/.test(placeId)) placeId = null;
-            script.placeId = placeId; script.gameName = null;
-            if (placeId) { const info = await getRobloxGameInfo(env, placeId); if (info) script.gameName = info.name; }
-        }
-        await env.SCRIPTS_KV.put(`script:${id}`, JSON.stringify(script));
-        const index = await getScriptsIndex(env);
-        await saveScriptsIndex(env, index.map(m => m.id === id ? { ...m, title: script.title, description: script.description, placeId: script.placeId, gameName: script.gameName, hubName: script.hubName, tags: script.tags, keysystem: script.keysystem, length: script.code.length } : m));
-        return jsonResponse({ script });
-    }
-    if (singleMatch && method === "DELETE") {
-        const id = singleMatch[1];
-        const raw = await env.SCRIPTS_KV.get(`script:${id}`);
-        if (!raw) return jsonResponse({ error: "Not found" }, 404);
-        const script = JSON.parse(raw);
-        const auth = request.headers.get("Authorization") || "";
-        const masterAuthorized = !!env.DELETE_KEY && auth === `Bearer ${env.DELETE_KEY}`;
-        const session = await getSession(request, env);
-        const isOwner = session && script.ownerSub && session.sub === script.ownerSub;
-        const isAdmin = session && isAdminEmail(env, session.email);
-        if (!masterAuthorized && !isOwner && !isAdmin) return jsonResponse({ error: "Unauthorized" }, 401);
-        await env.SCRIPTS_KV.delete(`script:${id}`);
-        await env.SCRIPTS_KV.delete(`comments:${id}`);
-        await env.SCRIPTS_KV.delete(`ratings:${id}`);
-        const index = await getScriptsIndex(env);
-        await saveScriptsIndex(env, index.filter(s => s.id !== id));
-        return jsonResponse({ deleted: id });
-    }
-
-    const commentsMatch = path.match(/^\/api\/scripts\/([a-zA-Z0-9-]+)\/comments$/);
-    if (commentsMatch && method === "GET") {
-        const raw = await env.SCRIPTS_KV.get(`comments:${commentsMatch[1]}`);
-        const comments = raw ? JSON.parse(raw) : [];
-        return jsonResponse({ comments: comments.sort((a, b) => b.createdAt - a.createdAt) });
-    }
-    if (commentsMatch && method === "POST") {
-        if (!(await rateLimit(request, env, "comment", 10, 600))) return jsonResponse({ error: "Too many comments. Try again later." }, 429);
-        const id = commentsMatch[1];
-        const exists = await env.SCRIPTS_KV.get(`script:${id}`);
-        if (!exists) return jsonResponse({ error: "Script not found" }, 404);
-        let body; try { body = await readJson(request, 5000); } catch (err) { return jsonResponse({ error: err.message === "BODY_TOO_LARGE" ? "Request body too large" : "Invalid JSON body" }, 400); }
-        const text = sanitizeText(body.text, MAX_COMMENT_LENGTH);
-        if (!text) return jsonResponse({ error: "Comment text required" }, 400);
-        const session = await getSession(request, env);
-        const author = session ? sanitizeText(session.name, MAX_USERNAME_LENGTH) || "user" : sanitizeText(body.author, MAX_USERNAME_LENGTH) || "anonymous";
-        const raw = await env.SCRIPTS_KV.get(`comments:${id}`);
-        const comments = raw ? JSON.parse(raw) : [];
-        comments.push({ id: crypto.randomUUID(), author, text, createdAt: Date.now() });
-        await env.SCRIPTS_KV.put(`comments:${id}`, JSON.stringify(comments.slice(-200)));
-        return jsonResponse({ ok: true }, 201);
-    }
-
-
-    const ratingsMatch = path.match(/^\/api\/scripts\/([a-zA-Z0-9-]+)\/ratings$/);
-    if (ratingsMatch && method === "GET") {
-        const id = ratingsMatch[1];
-        const scriptRaw = await env.SCRIPTS_KV.get(`script:${id}`);
-        if (!scriptRaw) return jsonResponse({ error: "Not found" }, 404);
-        const raw = await env.SCRIPTS_KV.get(`ratings:${id}`);
-        const ratings = raw ? JSON.parse(raw) : {};
-        const counts = { 1:0, 2:0, 3:0, 4:0, 5:0 };
-        let total = 0, sum = 0;
-        for (const value of Object.values(ratings)) { const r = Number(value?.rating); if (r >= 1 && r <= 5) { counts[r]++; total++; sum += r; } }
-        const session = await getSession(request, env);
-        const myRating = session?.sub && ratings[session.sub] ? Number(ratings[session.sub].rating) : 0;
-        return jsonResponse({ total, average: total ? sum / total : 0, distribution: counts, myRating });
-    }
-    if (ratingsMatch && method === "POST") {
-        if (!(await rateLimit(request, env, "rating", 20, 600))) return jsonResponse({ error: "Too many rating requests. Try again later." }, 429);
-        const id = ratingsMatch[1];
-        const scriptRaw = await env.SCRIPTS_KV.get(`script:${id}`);
-        if (!scriptRaw) return jsonResponse({ error: "Not found" }, 404);
-        const session = await getSession(request, env);
-        if (!session?.sub) return jsonResponse({ error: "Sign in with Google to rate scripts" }, 401);
-        let body; try { body = await readJson(request, 2000); } catch (err) { return jsonResponse({ error: err.message === "BODY_TOO_LARGE" ? "Request body too large" : "Invalid JSON body" }, 400); }
-        const rating = Number(body.rating);
-        if (!Number.isInteger(rating) || rating < 1 || rating > 5) return jsonResponse({ error: "Rating must be an integer from 1 to 5" }, 400);
-        const raw = await env.SCRIPTS_KV.get(`ratings:${id}`);
-        const ratings = raw ? JSON.parse(raw) : {};
-        ratings[session.sub] = { rating, updatedAt: Date.now() };
-        await env.SCRIPTS_KV.put(`ratings:${id}`, JSON.stringify(ratings));
-        const counts = { 1:0, 2:0, 3:0, 4:0, 5:0 };
-        let total = 0, sum = 0;
-        for (const value of Object.values(ratings)) { const r = Number(value?.rating); if (r >= 1 && r <= 5) { counts[r]++; total++; sum += r; } }
-        return jsonResponse({ total, average: total ? sum / total : 0, distribution: counts, myRating: rating });
-    }
-
-    return jsonResponse({ error: "Not found" }, 404);
-}
-
 /* ─────────────────── Google OAuth ─────────────────── */
 const REDIRECT_URI = "https://dakait.online/auth/callback";
 
@@ -1394,7 +678,7 @@ async function handleApiMe(request, env) {
 
 /* ─────────────────── Sitemap (helps Google index every script) ─────────────────── */
 async function buildSitemap(env) {
-    const index = await getScriptsIndex(env);
+    const index = await getAllScriptSummaries(env);
     const sorted = [...index].sort((a, b) => b.createdAt - a.createdAt);
     const urls = [
         `<url><loc>https://dakait.online/</loc><changefreq>weekly</changefreq><priority>1.0</priority></url>`,
@@ -1410,7 +694,7 @@ async function buildSitemap(env) {
 
 /* ─────────────────── Main fetch handler ─────────────────── */
 export default {
-    async fetch(request, env) {
+    async fetch(request, env, ctx) {
         const url = new URL(request.url);
         const path = url.pathname;
 
@@ -1422,7 +706,7 @@ export default {
         // robots.txt — tells Google what to crawl + where sitemap is
         if (path === "/robots.txt") {
             return new Response(
-                "User-agent: *\nAllow: /\nDisallow: /auth/\nDisallow: /api/\nDisallow: /register-commands\nSitemap: https://dakait.online/sitemap.xml\n",
+                "User-agent: *\nAllow: /\nDisallow: /auth/\nDisallow: /api/\nSitemap: https://dakait.online/sitemap.xml\n",
                 { headers: { "Content-Type": "text/plain" } }
             );
         }
@@ -1455,24 +739,40 @@ export default {
         // Edit page
         const editMatch = path.match(/^\/scripts\/([a-zA-Z0-9-]+)\/edit$/);
         if (editMatch && request.method === "GET") {
-            const raw = await env.SCRIPTS_KV.get(`script:${editMatch[1]}`);
-            if (!raw) return new Response("Script not found", { status: 404 });
-            const script = JSON.parse(raw);
-            const session = await getSession(request, env);
-            const isOwner = session && script.ownerSub && session.sub === script.ownerSub;
-            const isAdmin = session && isAdminEmail(env, session.email);
-            if (!isOwner && !isAdmin) return new Response("Not authorized", { status: 403 });
-            return new Response(buildEditHtml(script), { headers: { "Content-Type": "text/html" }, status: 200 });
+            const script = await getScript(env, editMatch[1]);
+            if (!script) return new Response("Script not found", { status: 404 });
+
+            const access = await canManageScript(request, env, script);
+            if (!access.allowed) return new Response("Not authorized", { status: 403 });
+
+            return new Response(buildEditHtml(script), {
+                headers: { "Content-Type": "text/html; charset=utf-8" },
+                status: 200
+            });
         }
 
         // Script detail page (server-rendered — Google indexes each one)
         const detailMatch = path.match(/^\/scripts\/([a-zA-Z0-9-]+)$/);
         if (detailMatch && request.method === "GET") {
-            const raw = await env.SCRIPTS_KV.get(`script:${detailMatch[1]}`);
-            if (!raw) return new Response("Script not found", { status: 404 });
-            const script = JSON.parse(raw);
-            const thumbnailUrl = script.placeId ? `/api/roblox-thumbnail?placeId=${encodeURIComponent(script.placeId)}` : null;
-            return new Response(buildDetailHtml(script, thumbnailUrl), { headers: { "Content-Type": "text/html" }, status: 200 });
+            const script = await prepareScriptForPage(env, detailMatch[1]);
+            if (!script) return new Response("Script not found", { status: 404 });
+
+            const thumbnailUrl = script.placeId
+                ? `/api/roblox-thumbnail?placeId=${encodeURIComponent(script.placeId)}`
+                : null;
+
+            // Count real page visits without blocking HTML generation.
+            if (ctx && typeof ctx.waitUntil === "function") {
+                ctx.waitUntil(recordScriptView(env, script.id).catch(() => {}));
+            }
+
+            return new Response(buildDetailHtml(script, thumbnailUrl), {
+                headers: {
+                    "Content-Type": "text/html; charset=utf-8",
+                    "Cache-Control": "no-store"
+                },
+                status: 200
+            });
         }
 
         // Scripts JSON API
@@ -1488,4 +788,5 @@ export default {
         return new Response(SILK_ROAD_HTML, { headers: { "Content-Type": "text/html" }, status: 200 });
     }
 };
+
 
