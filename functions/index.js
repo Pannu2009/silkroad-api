@@ -844,6 +844,18 @@ export default {
             return new Response(imgRes.body, { headers: { "Content-Type": imgRes.headers.get("Content-Type") || "image/png", "Cache-Control": "public, max-age=86400" } });
         }
 
+        if (path === "/ads.txt") {
+    return new Response(
+        "google.com, pub-1269702947671634, DIRECT, f08c47fec0942fa0",
+        {
+            headers: {
+                "Content-Type": "text/plain; charset=utf-8",
+                "Cache-Control": "public, max-age=3600"
+            }
+        }
+    );
+        }
+
         // Edit page
         const editMatch = path.match(/^\/scripts\/([a-zA-Z0-9-]+)\/edit$/);
         if (editMatch && request.method === "GET") {
