@@ -1,4 +1,7 @@
-/* scripts.js — Script gallery, script API, ratings, comments, views and Roblox thumbnail support. */
+/* scripts.js — Script gallery, script CRUD, views and Roblox thumbnail support. */
+
+import { getRatingSummary, updateRating, handleRatingApi, deleteRatings } from "./ratings.js";
+import { handleCommentsApi, getComments, deleteComment, deleteComments } from "./comments.js";
 
 const MAX_CODE_LENGTH = 20000;
 const MAX_TITLE_LENGTH = 120;
@@ -175,31 +178,6 @@ function toSummary(script, rating) {
     };
 }
 
-async function getRatingSummary(env, id, sessionSub = null) {
-    const raw = await env.SCRIPTS_KV.get(`ratings:${id}`);
-    const ratings = raw ? (() => { try { return JSON.parse(raw); } catch { return {}; } })() : {};
-    const counts = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
-    let total = 0;
-    let sum = 0;
-
-    for (const value of Object.values(ratings)) {
-        const r = Number(value?.rating);
-        if (Number.isInteger(r) && r >= 1 && r <= 5) {
-            counts[r]++;
-            total++;
-            sum += r;
-        }
-    }
-
-    return {
-        total,
-        average: total ? Math.round((sum / total) * 10) / 10 : 0,
-        distribution: counts,
-        worksPercent: total ? Math.round((counts[5] * 100) / total) : 0,
-        myRating: sessionSub && ratings[sessionSub] ? Number(ratings[sessionSub].rating) : 0
-    };
-}
-
 async function getGalleryScripts(env, sessionSub = null) {
     const records = await listAllScriptRecords(env);
     const summaries = await Promise.all(records.map(async (script) => {
@@ -322,15 +300,6 @@ async function sendDiscordWebhook(env, { title, gameName, link, tags, username }
     } catch {}
 }
 
-async function updateRating(env, id, sessionSub, rating) {
-    const key = `ratings:${id}`;
-    const raw = await env.SCRIPTS_KV.get(key);
-    const ratings = raw ? (() => { try { return JSON.parse(raw); } catch { return {}; } })() : {};
-    ratings[sessionSub] = { rating, updatedAt: Date.now() };
-    await env.SCRIPTS_KV.put(key, JSON.stringify(ratings));
-    return getRatingSummary(env, id, sessionSub);
-}
-
 function buildCommentStars(rating) {
     const r = Number(rating) || 0;
     return Array.from({ length: 5 }, (_, i) =>
@@ -437,23 +406,12 @@ export async function handleScriptsApi(request, env, path) {
         return jsonResponse({ script: record }, 201);
     }
 
-    // ── Admin debug endpoint — visit /api/admin/debug to diagnose config ────────
+    // Admin-only diagnostic endpoint.
     if (path === "/api/admin/debug" && method === "GET") {
         const session = await getSession(request, env);
-        const adminEmailsRaw = env.ADMIN_EMAILS || env.ADMIN_EMAIL || null;
         const isAdmin = !!(session?.email && isAdminEmail(env, session.email));
-        return jsonResponse({
-            tip: "Visit this URL while signed in to diagnose admin issues.",
-            session: session ? { email: session.email, name: session.name, sub: session.sub?.slice(0,8)+"…" } : null,
-            isAdmin,
-            adminEmailsConfigured: !!adminEmailsRaw,
-            adminEmailsPreview: adminEmailsRaw
-                ? adminEmailsRaw.slice(0, 5) + "…(" + adminEmailsRaw.length + " chars)"
-                : "NOT SET — add ADMIN_EMAILS in Cloudflare → Workers → Settings → Variables & Secrets",
-            diagnosis: session?.email
-                ? isAdmin ? "✓ Admin access confirmed" : "✗ " + session.email + " not in ADMIN_EMAILS. Check spelling/spaces."
-                : "Not signed in — sign in first then visit this URL again",
-        });
+        if (!isAdmin) return jsonResponse({ error: "Admin access required." }, 403);
+        return jsonResponse({ diagnosis: "Admin access confirmed", email: session.email, adminEmailsConfigured: !!(env.ADMIN_EMAILS || env.ADMIN_EMAIL) });
     }
 
     const singleMatch = path.match(/^\/api\/scripts\/([a-zA-Z0-9-]+)$/);
@@ -542,8 +500,8 @@ export async function handleScriptsApi(request, env, path) {
 
         await Promise.all([
             env.SCRIPTS_KV.delete(`script:${id}`),
-            env.SCRIPTS_KV.delete(`comments:${id}`),
-            env.SCRIPTS_KV.delete(`ratings:${id}`),
+            deleteComments(env, id),
+            deleteRatings(env, id),
             env.SCRIPTS_KV.delete(`views:${id}`)
         ]);
 
@@ -551,126 +509,24 @@ export async function handleScriptsApi(request, env, path) {
         return jsonResponse({ deleted: id });
     }
 
-    /* ───────────── Comments ───────────── */
+    /* ───────────── Admin comment moderation ───────────── */
+    const commentDeleteMatch = path.match(/^\/api\/admin\/scripts\/([a-zA-Z0-9-]+)\/comments\/([a-zA-Z0-9-]+)$/);
+    if (commentDeleteMatch && method === "DELETE") {
+        const session = await getSession(request, env);
+        if (!session?.email || !isAdminEmail(env, session.email)) return jsonResponse({ error: "Admin access required" }, 403);
+        const ok = await deleteComment(env, commentDeleteMatch[1], commentDeleteMatch[2]);
+        return ok ? jsonResponse({ deleted: commentDeleteMatch[2] }) : jsonResponse({ error: "Comment not found" }, 404);
+    }
+
+    /* ───────────── Comments / Ratings delegated modules ───────────── */
     const commentsMatch = path.match(/^\/api\/scripts\/([a-zA-Z0-9-]+)\/comments$/);
-
-    if (commentsMatch && method === "GET") {
-        const id = commentsMatch[1];
-        const exists = await env.SCRIPTS_KV.get(`script:${id}`);
-        if (!exists) return jsonResponse({ error: "Script not found" }, 404);
-
-        const raw = await env.SCRIPTS_KV.get(`comments:${id}`);
-        let comments = [];
-        try { comments = raw ? JSON.parse(raw) : []; } catch {}
-
-        comments = Array.isArray(comments) ? comments : [];
-        comments.sort((a, b) => Number(b.createdAt) - Number(a.createdAt));
-
-        return jsonResponse({ comments });
+    if (commentsMatch) {
+        return handleCommentsApi(request, env, commentsMatch[1], method, rateLimit, updateRating);
     }
 
-    if (commentsMatch && method === "POST") {
-        if (!(await rateLimit(request, env, "comment", 10, 600))) {
-            return jsonResponse({ error: "Too many comments. Try again later." }, 429);
-        }
-
-        const id = commentsMatch[1];
-        const exists = await env.SCRIPTS_KV.get(`script:${id}`);
-        if (!exists) return jsonResponse({ error: "Script not found" }, 404);
-
-        let body;
-        try { body = await readJson(request, 6000); }
-        catch (err) {
-            return jsonResponse({
-                error: err.message === "BODY_TOO_LARGE" ? "Request body too large" : "Invalid JSON body"
-            }, 400);
-        }
-
-        const text = sanitizeText(body.text, MAX_COMMENT_LENGTH);
-        const hasRating = body.rating !== undefined && body.rating !== null && body.rating !== "";
-
-        // FIX: Allow rating without text, or text without rating. Need at least one.
-        if (!text && !hasRating) return jsonResponse({ error: "Please add a comment or a star rating (or both)." }, 400);
-
-        const session = await getSession(request, env);
-        const author = session
-            ? sanitizeText(session.name, MAX_USERNAME_LENGTH) || "user"
-            : sanitizeText(body.author, MAX_USERNAME_LENGTH) || "anonymous";
-        let rating = null;
-
-        if (hasRating) {
-            rating = Number(body.rating);
-            if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
-                return jsonResponse({ error: "Rating must be an integer from 1 to 5" }, 400);
-            }
-            if (!session?.sub) {
-                return jsonResponse({ error: "Sign in with Google to attach a star rating." }, 401);
-            }
-        }
-
-        const raw = await env.SCRIPTS_KV.get(`comments:${id}`);
-        let comments = [];
-        try { comments = raw ? JSON.parse(raw) : []; } catch {}
-        if (!Array.isArray(comments)) comments = [];
-
-        const comment = {
-            id: crypto.randomUUID(),
-            author,
-            text,
-            rating,
-            createdAt: Date.now(),
-            authorSub: session?.sub || null
-        };
-
-        comments.push(comment);
-        await env.SCRIPTS_KV.put(`comments:${id}`, JSON.stringify(comments.slice(-200)));
-
-        let ratingSummary = null;
-        if (rating !== null && session?.sub) {
-            ratingSummary = await updateRating(env, id, session.sub, rating);
-        }
-
-        return jsonResponse({ ok: true, comment, rating: ratingSummary }, 201);
-    }
-
-    /* ───────────── Ratings (kept for changing a rating without a new comment) ───────────── */
     const ratingsMatch = path.match(/^\/api\/scripts\/([a-zA-Z0-9-]+)\/ratings$/);
-
-    if (ratingsMatch && method === "GET") {
-        const id = ratingsMatch[1];
-        const exists = await env.SCRIPTS_KV.get(`script:${id}`);
-        if (!exists) return jsonResponse({ error: "Not found" }, 404);
-
-        const session = await getSession(request, env);
-        return jsonResponse(await getRatingSummary(env, id, session?.sub || null));
-    }
-
-    if (ratingsMatch && method === "POST") {
-        if (!(await rateLimit(request, env, "rating", 20, 600))) {
-            return jsonResponse({ error: "Too many rating requests. Try again later." }, 429);
-        }
-
-        const id = ratingsMatch[1];
-        const exists = await env.SCRIPTS_KV.get(`script:${id}`);
-        if (!exists) return jsonResponse({ error: "Not found" }, 404);
-
-        const session = await getSession(request, env);
-        if (!session?.sub) return jsonResponse({ error: "Sign in with Google to rate scripts" }, 401);
-
-        let body;
-        try { body = await readJson(request, 2000); }
-        catch (err) {
-            return jsonResponse({
-                error: err.message === "BODY_TOO_LARGE" ? "Request body too large" : "Invalid JSON body"
-            }, 400);
-        }
-
-        const rating = Number(body.rating);
-        if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
-            return jsonResponse({ error: "Rating must be an integer from 1 to 5" }, 400);
-        }
-
-        return jsonResponse(await updateRating(env, id, session.sub, rating));
+    if (ratingsMatch) {
+        return handleRatingApi(request, env, ratingsMatch[1], method, rateLimit);
     }
 
     return jsonResponse({ error: "Not found" }, 404);
@@ -897,27 +753,35 @@ const SCRIPT_ID=${safeJsonForHtml(script.id)}, RAW_CODE=${safeJsonForHtml(script
 const copyBtn=document.getElementById("copyBtn");
 copyBtn.onclick=async()=>{try{await navigator.clipboard.writeText(RAW_CODE);copyBtn.textContent="Copied";setTimeout(()=>copyBtn.textContent="Copy",1300)}catch{copyBtn.textContent="Select and copy"}};
 
-let me={loggedIn:false,isAdmin:false,sub:null};
-fetch("/api/me",{credentials:"same-origin",cache:"no-store"}).then(r=>r.json()).then(data=>{
- me=data;
- const ownerSub=${safeJsonForHtml(script.ownerSub||null)};
- if(me.loggedIn && pendingRating>=1 && pendingRating<=5){ selectRating(pendingRating); history.replaceState({},"",location.pathname); }
- if((me.loggedIn&&me.sub===ownerSub)||(me.loggedIn&&me.isAdmin)){
-   document.getElementById("ownerActions").style.display="flex";
- }
- const deleteBtn=document.getElementById("deleteBtn");
- if(deleteBtn)deleteBtn.onclick=async()=>{
+let me={loggedIn:false,isAdmin:false,sub:null,ready:false};
+const ownerSub=${safeJsonForHtml(script.ownerSub||null)};
+const authReady=fetch("/api/me",{credentials:"same-origin",cache:"no-store"})
+ .then(r=>r.ok?r.json():{loggedIn:false})
+ .then(data=>{
+   me={...data,ready:true};
+   if(me.loggedIn && pendingRating>=1 && pendingRating<=5){ selectRating(pendingRating); history.replaceState({},"",location.pathname); }
+   if((me.loggedIn&&me.sub===ownerSub)||(me.loggedIn&&me.isAdmin)){
+     document.getElementById("ownerActions").style.display="flex";
+   }
+   document.getElementById("commentNote").textContent=me.loggedIn
+     ? "You are signed in. You can rate and comment."
+     : "Sign in with Google to rate or comment.";
+   return me;
+ }).catch(()=>{ me={loggedIn:false,isAdmin:false,sub:null,ready:true}; return me; });
+
+const deleteBtn=document.getElementById("deleteBtn");
+if(deleteBtn)deleteBtn.onclick=async()=>{
+   await authReady;
+   if(!me.loggedIn){ window.location.href="/auth/login?return="+encodeURIComponent(location.pathname); return; }
+   if(!((me.sub===ownerSub)||me.isAdmin)){ alert("You do not have permission to delete this script."); return; }
    if(!confirm("Delete this script? This also removes its comments and ratings."))return;
    deleteBtn.disabled=true;deleteBtn.textContent="Deleting…";
    const res=await fetch("/api/scripts/"+encodeURIComponent(SCRIPT_ID),{method:"DELETE",credentials:"same-origin"});
    const data=await res.json().catch(()=>({}));
    if(res.ok){window.location.href="/scripts";return}
    deleteBtn.disabled=false;deleteBtn.textContent="Delete";
-   const reason = data.reason ? "\n\nDiagnosis: " + data.reason : "";
-   const hint = !data.reason ? "\n\nTip: Visit /api/admin/debug to check your admin config." : "";
-   alert((data.error||"Couldn't delete.") + reason + hint);
+   alert(data.error||"Couldn't delete.");
  };
-}).catch(()=>{});
 
 const summary=document.getElementById("ratingSummary"),bars=document.getElementById("ratingBars"),big=document.getElementById("bigStars"),works=document.getElementById("worksCallout"),ratingNote=document.getElementById("ratingNote");
 function renderRatings(d){
@@ -951,24 +815,24 @@ async function loadComments(){
 document.getElementById("commentForm").onsubmit=async e=>{
  e.preventDefault();
  const note=document.getElementById("commentNote"),btn=e.currentTarget.querySelector("button[type=submit]");
- const text=document.getElementById("commentText").value.trim(),author=document.getElementById("commentName").value.trim();
- if(!text)return;
+ const text=document.getElementById("commentText").value.trim();
+ if(!text && !selectedRating){ note.textContent="Choose a star rating or write a comment."; return; }
+ await authReady;
+ if(!me.loggedIn){
+   const ret=new URL(location.href);
+   if(selectedRating)ret.searchParams.set("rate",String(selectedRating));
+   window.location.href="/auth/login?return="+encodeURIComponent(ret.pathname+ret.search);
+   return;
+ }
  btn.disabled=true;btn.textContent="Posting…";
  try{
-  // If they selected a rating but aren't logged in, redirect to login first
-  if(selectedRating>0 && !me.loggedIn){
-    const ret=new URL(location.href);
-    ret.searchParams.set("rate",String(selectedRating));
-    window.location.href="/auth/login?return="+encodeURIComponent(ret.pathname+ret.search);
-    return;
-  }
-  const r=await fetch("/api/scripts/"+SCRIPT_ID+"/comments",{method:"POST",headers:{"Content-Type":"application/json"},credentials:"same-origin",body:JSON.stringify({text,author,rating:selectedRating||null})});
+  const r=await fetch("/api/scripts/"+SCRIPT_ID+"/comments",{method:"POST",headers:{"Content-Type":"application/json"},credentials:"same-origin",body:JSON.stringify({text,rating:selectedRating||null})});
   const d=await r.json().catch(()=>({}));
   if(!r.ok)throw new Error(d.error||"Couldn't post comment");
   document.getElementById("commentText").value="";
   selectRating(0);
   note.textContent=d.rating?"Comment and rating posted.":"Comment posted.";
-  loadComments();loadRatings();
+  await Promise.all([loadComments(),loadRatings()]);
  }catch(err){note.textContent=err.message||"Couldn't post comment."}
  finally{btn.disabled=false;btn.textContent="Post comment"}
 };
@@ -1030,5 +894,6 @@ export async function prepareScriptForPage(env, id) {
     script.views = await getViews(env, id);
     return script;
 }
+
 
 
