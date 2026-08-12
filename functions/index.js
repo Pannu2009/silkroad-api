@@ -313,12 +313,6 @@ ${SHARED_HEAD(
     </div>
   </section>
 
-  <!-- AD CONTAINER -->
-  <div style="margin-top:2.5rem; text-align:center;">
-    <script async="async" data-cfasync="false" src="https://pl30819137.effectivecpmnetwork.com/9f9a081fb4df321e6c86f26cc58c6192/invoke.js"></script>
-    <div id="container-9f9a081fb4df321e6c86f26cc58c6192"></div>
-  </div>
-
   <footer class="reveal">
     <span>dakait.online</span>
     <span>operated by Dakait Shah &amp; Dakait Guri</span>
@@ -326,7 +320,7 @@ ${SHARED_HEAD(
 </main>
 
 <script>
-  function esc(s){return String(s||"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]);}
+  function esc(s){return String(s||"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
 
   // Typewriter
   const phrases = [
@@ -583,12 +577,6 @@ ${SHARED_HEAD(
       </div>
     </aside>
   </div>
-
-  <!-- AD CONTAINER -->
-  <div style="margin-top:2.5rem; text-align:center;">
-    <script async="async" data-cfasync="false" src="https://pl30819137.effectivecpmnetwork.com/9f9a081fb4df321e6c86f26cc58c6192/invoke.js"></script>
-    <div id="container-9f9a081fb4df321e6c86f26cc58c6192"></div>
-  </div>
 </div>
 
 <script>
@@ -597,7 +585,7 @@ ${SHARED_HEAD(
   const fmsg=document.getElementById("fmsg"), form=document.getElementById("uform");
   const card=document.getElementById("previewCard");
 
-  function esc(s){return String(s||"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]);}
+  function esc(s){return String(s||"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
 
   optKl.addEventListener("click",()=>{ keysys=false; optKl.className="kt-opt active-kl"; optHk.className="kt-opt"; updatePreview(); });
   optHk.addEventListener("click",()=>{ keysys=true; optHk.className="kt-opt active-hk"; optKl.className="kt-opt"; updatePreview(); });
@@ -857,15 +845,15 @@ export default {
         }
 
         if (path === "/ads.txt") {
-            return new Response(
-                "google.com, pub-1269702947671634, DIRECT, f08c47fec0942fa0",
-                {
-                    headers: {
-                        "Content-Type": "text/plain; charset=utf-8",
-                        "Cache-Control": "public, max-age=3600"
-                    }
-                }
-            );
+    return new Response(
+        "google.com, pub-1269702947671634, DIRECT, f08c47fec0942fa0",
+        {
+            headers: {
+                "Content-Type": "text/plain; charset=utf-8",
+                "Cache-Control": "public, max-age=3600"
+            }
+        }
+    );
         }
 
         // Edit page
@@ -914,7 +902,14 @@ export default {
             return resp;
         }
 
+        // Discord interaction/bot + Roblox server queue endpoints were intentionally removed.
+        // Discord upload notifications via DISCORD_WEBHOOK_URL remain enabled.
+
         return new Response(SILK_ROAD_HTML, { headers: { "Content-Type": "text/html" }, status: 200 });
     }
 };
+
+
+
+
 
