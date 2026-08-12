@@ -679,7 +679,6 @@ function render(){const q=document.getElementById("search").value.toLowerCase().
 async function removeScript(id){const s=all.find(x=>x.id===id);if(!s||!confirm('Delete '+s.title+'? This removes its comments and ratings too.'))return;const r=await fetch('/api/scripts/'+encodeURIComponent(id),{method:'DELETE',credentials:'same-origin'});const d=await r.json().catch(()=>({}));if(!r.ok){alert(d.error||'Delete failed');return}await load()}
 document.getElementById("refresh").onclick=load;document.getElementById("search").oninput=render;load();
 </script></body></html>`;
-`;
 
 /* ─────────────────── Google OAuth ─────────────────── */
 const REDIRECT_URI = "https://dakait.online/auth/callback";
