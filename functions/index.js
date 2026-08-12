@@ -357,7 +357,7 @@ ${SHARED_HEAD(
     const row = document.getElementById('accountRow');
     const name = esc(me.name || '');
     if (me.loggedIn) {
-      row.innerHTML = '<span class="seal-text" style="opacity:0.75;">Signed in as <b>' + name + '</b>' + (me.isAdmin ? ' · <b style="color:var(--sand)">ADMIN</b>' : '') + '</span><a class="btn" href="/auth/logout">Log out</a>';
+      row.innerHTML = '<span class="seal-text" style="opacity:0.75;">Signed in as <b>' + name + '</b>' + (me.isAdmin ? ' · <b style="color:var(--sand)">ADMIN</b>' : '') + '</span>' + (me.isAdmin ? '<a class="btn" href="/admin/">Admin</a>' : '') + '<a class="btn" href="/auth/logout">Log out</a>';
     } else {
       row.innerHTML = '<a class="btn" href="/auth/login?return=%2F">Sign in with Google</a>';
     }
@@ -649,6 +649,38 @@ ${SHARED_HEAD(
 </body>
 </html>`;
 
+
+/* ─────────────────── ADMIN PAGE ─────────────────── */
+const ADMIN_HTML = `<!DOCTYPE html>
+<html lang="en"><head>
+${SHARED_HEAD("Admin Control Room — dakait.online", "Private Dakait administration panel.", "https://dakait.online/admin/")}
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap"/>
+<style>
+:root{--bg:#090a0d;--panel:#111318;--line:#252832;--text:#e8e9ed;--muted:#858a98;--accent:#ffb238;--green:#5cd98a;--red:#ff6262;--blue:#6ea8ff;--mono:'JetBrains Mono',monospace}*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 20% 0%,#2a1b0c22,transparent 45%),var(--bg);color:var(--text);font-family:var(--mono)}.wrap{max-width:1050px;margin:auto;padding:28px 18px 80px}.top{display:flex;justify-content:space-between;gap:15px;align-items:center;margin-bottom:24px;flex-wrap:wrap}.brand{font-size:12px;letter-spacing:.14em;text-transform:uppercase}.brand span{color:var(--accent)}a{color:inherit}.actions{display:flex;gap:8px;flex-wrap:wrap}.btn{display:inline-block;text-decoration:none;border:1px solid var(--line);background:#151820;color:var(--text);padding:9px 12px;border-radius:7px;font:11px var(--mono);cursor:pointer}.btn:hover{border-color:#555b69}.danger{color:var(--red);border-color:#61383b}.hero{border:1px solid var(--line);background:linear-gradient(135deg,#171a21,#0f1116);border-radius:12px;padding:22px;margin-bottom:18px}.eyebrow{font-size:10px;color:var(--accent);letter-spacing:.16em;text-transform:uppercase}.hero h1{font-size:28px;margin:8px 0}.hero p{color:var(--muted);font-size:12px;line-height:1.6}.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:18px 0}.stat{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:15px}.num{font-size:24px;color:var(--accent)}.label{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.12em;margin-top:4px}.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;margin-top:15px}.panel h2{font-size:13px;margin:0 0 12px}.controls{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}.controls input{flex:1;min-width:180px;background:#090a0d;border:1px solid var(--line);border-radius:7px;color:var(--text);padding:10px;font:12px var(--mono)}.script{display:grid;grid-template-columns:1fr auto;gap:12px;padding:13px 0;border-top:1px dashed var(--line);align-items:center}.script:first-child{border-top:0}.title{font-size:13px}.meta{font-size:9px;color:var(--muted);margin-top:5px}.script-actions{display:flex;gap:6px;flex-wrap:wrap}.empty,.msg{color:var(--muted);font-size:11px}.ok{color:var(--green)}.err{color:var(--red)}.feature-list{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}.feature{border:1px solid var(--line);border-radius:8px;padding:12px}.feature b{font-size:11px}.feature p{font-size:10px;color:var(--muted);line-height:1.5;margin:5px 0 0}@media(max-width:650px){.stats{grid-template-columns:repeat(2,1fr)}.feature-list{grid-template-columns:1fr}.script{grid-template-columns:1fr}.script-actions{justify-content:flex-start}}
+</style></head><body><main class="wrap">
+<div class="top"><div class="brand"><a href="/">DAKAIT<span>.ONLINE</span></a> / ADMIN</div><div class="actions"><a class="btn" href="/scripts">Gallery</a><a class="btn" href="/">Home</a><a class="btn" href="/auth/logout">Log out</a></div></div>
+<section class="hero"><div class="eyebrow">Private control room</div><h1>Admin control.</h1><p id="who">Checking administrator session…</p></section>
+<div class="stats"><div class="stat"><div class="num" id="scriptCount">—</div><div class="label">Scripts</div></div><div class="stat"><div class="num" id="views">—</div><div class="label">Total views</div></div><div class="stat"><div class="num" id="ratings">—</div><div class="label">Ratings</div></div><div class="stat"><div class="num" id="avg">—</div><div class="label">Average rating</div></div></div>
+<section class="panel"><h2>Script management</h2><div class="controls"><input id="search" placeholder="Search scripts…"/><button class="btn" id="refresh">Refresh</button></div><div id="scripts"><div class="empty">Loading…</div></div></section>
+<section class="panel"><h2>Admin controls available</h2><div class="feature-list">
+<div class="feature"><b>Manage scripts</b><p>Edit or delete any script, regardless of owner.</p></div>
+<div class="feature"><b>Moderate comments</b><p>Next control can remove abusive or unwanted community comments.</p></div>
+<div class="feature"><b>Review ratings</b><p>See rating distribution and community health for every script.</p></div>
+<div class="feature"><b>Site statistics</b><p>Monitor scripts, views, ratings and average score.</p></div>
+<div class="feature"><b>Content moderation</b><p>Future control for hiding, restoring or flagging scripts without deleting them.</p></div>
+<div class="feature"><b>Admin audit log</b><p>Future control to record who edited or deleted content and when.</p></div>
+</div></section>
+<p class="msg" id="msg"></p>
+</main><script>
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+let all=[];
+async function load(){const msg=document.getElementById("msg");msg.textContent="Refreshing…";try{const r=await fetch("/api/admin/overview",{credentials:"same-origin",cache:"no-store"});const d=await r.json();if(r.status===401){location.href="/auth/login?return="+encodeURIComponent("/admin/");return}if(!r.ok)throw new Error(d.error||"Admin access denied");all=d.scripts||[];document.getElementById("who").textContent="Signed in as "+d.user.name+" · "+d.user.email+" · ADMIN";document.getElementById("scriptCount").textContent=d.stats.scripts;document.getElementById("views").textContent=d.stats.views;document.getElementById("ratings").textContent=d.stats.ratings;document.getElementById("avg").textContent=d.stats.average?d.stats.average.toFixed(1)+"/5":"—";render();msg.textContent="Updated.";msg.className="msg ok"}catch(e){msg.textContent=e.message;msg.className="msg err"}}
+function render(){const q=document.getElementById("search").value.toLowerCase().trim();const list=all.filter(s=>[s.title,s.username,s.gameName,s.hubName,...(s.tags||[])].join(" ").toLowerCase().includes(q));const el=document.getElementById("scripts");if(!list.length){el.innerHTML='<div class="empty">No matching scripts.</div>';return}el.innerHTML=list.map(s=>'<div class="script"><div><div class="title">'+esc(s.title)+'</div><div class="meta">'+esc(s.id)+' · @'+esc(s.username||"unknown")+' · '+Number(s.views||0)+' views · '+(s.rating?.total||0)+' ratings</div></div><div class="script-actions"><a class="btn" href="/scripts/'+encodeURIComponent(s.id)+'">View</a><a class="btn" href="/scripts/'+encodeURIComponent(s.id)+'/edit">Edit</a><button class="btn danger" data-id="'+esc(s.id)+'">Delete</button></div></div>').join("");el.querySelectorAll("button[data-id]").forEach(b=>b.onclick=()=>removeScript(b.dataset.id));}
+async function removeScript(id){const s=all.find(x=>x.id===id);if(!s||!confirm('Delete '+s.title+'? This removes its comments and ratings too.'))return;const r=await fetch('/api/scripts/'+encodeURIComponent(id),{method:'DELETE',credentials:'same-origin'});const d=await r.json().catch(()=>({}));if(!r.ok){alert(d.error||'Delete failed');return}await load()}
+document.getElementById("refresh").onclick=load;document.getElementById("search").oninput=render;load();
+</script></body></html>`;
+`;
+
 /* ─────────────────── Google OAuth ─────────────────── */
 const REDIRECT_URI = "https://dakait.online/auth/callback";
 
@@ -720,6 +752,30 @@ async function handleApiMe(request, env) {
     return response;
 }
 
+
+async function handleAdminOverview(request, env) {
+    const session = await getSession(request, env);
+    if (!session?.sub) return jsonResponse({ error: "Sign in with Google first." }, 401);
+    if (!isAdminEmail(env, session.email)) return jsonResponse({ error: "Admin access required." }, 403);
+    const scripts = await getAllScriptSummaries(env);
+    let ratings = 0, weighted = 0;
+    for (const s of scripts) {
+        const total = Number(s.rating?.total || 0);
+        ratings += total;
+        weighted += Number(s.rating?.average || 0) * total;
+    }
+    return jsonResponse({
+        user: { name: session.name, email: session.email },
+        stats: {
+            scripts: scripts.length,
+            views: scripts.reduce((n, s) => n + Number(s.views || 0), 0),
+            ratings,
+            average: ratings ? weighted / ratings : 0
+        },
+        scripts
+    });
+}
+
 /* ─────────────────── Sitemap (helps Google index every script) ─────────────────── */
 async function buildSitemap(env) {
     const index = await getAllScriptSummaries(env);
@@ -766,6 +822,15 @@ export default {
         if (path === "/auth/callback") return handleAuthCallback(request, env);
         if (path === "/auth/logout") return handleAuthLogout();
         if (path === "/api/me") return handleApiMe(request, env);
+        if (path === "/api/admin/overview" && request.method === "GET") return handleAdminOverview(request, env);
+
+        // Private admin page
+        if (path === "/admin" || path === "/admin/") {
+            const session = await getSession(request, env);
+            if (!session?.sub) return new Response(null, { status: 302, headers: { Location: "/auth/login?return=%2Fadmin%2F" } });
+            if (!isAdminEmail(env, session.email)) return new Response("Forbidden — admin access required.", { status: 403, headers: { "Content-Type": "text/plain; charset=utf-8" } });
+            return new Response(ADMIN_HTML, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" } });
+        }
 
         // Scripts pages
         if (path === "/scripts" || path === "/scripts/") return new Response(GALLERY_HTML, { headers: { "Content-Type": "text/html" }, status: 200 });
@@ -832,6 +897,7 @@ export default {
         return new Response(SILK_ROAD_HTML, { headers: { "Content-Type": "text/html" }, status: 200 });
     }
 };
+
 
 
 
