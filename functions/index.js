@@ -320,6 +320,8 @@ ${SHARED_HEAD(
 </main>
 
 <script>
+  function esc(s){return String(s||"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+
   // Typewriter
   const phrases = [
     "Blox Fruits, Grow a Garden, Rivals — all here.",
@@ -693,6 +695,14 @@ async function handleAuthCallback(request, env) {
     } });
 }
 
+function jsonResponse(data, status = 200) {
+    const r = new Response(JSON.stringify(data), {
+        status,
+        headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" },
+    });
+    return r;
+}
+
 function handleAuthLogout() {
     return new Response(null, { status: 302, headers: { Location: "/", "Set-Cookie": "session=; HttpOnly; Secure; Path=/; Max-Age=0; SameSite=Lax" } });
 }
@@ -822,5 +832,6 @@ export default {
         return new Response(SILK_ROAD_HTML, { headers: { "Content-Type": "text/html" }, status: 200 });
     }
 };
+
 
 
