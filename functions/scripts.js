@@ -437,6 +437,25 @@ export async function handleScriptsApi(request, env, path) {
         return jsonResponse({ script: record }, 201);
     }
 
+    // ── Admin debug endpoint — visit /api/admin/debug to diagnose config ────────
+    if (path === "/api/admin/debug" && method === "GET") {
+        const session = await getSession(request, env);
+        const adminEmailsRaw = env.ADMIN_EMAILS || env.ADMIN_EMAIL || null;
+        const isAdmin = !!(session?.email && isAdminEmail(env, session.email));
+        return jsonResponse({
+            tip: "Visit this URL while signed in to diagnose admin issues.",
+            session: session ? { email: session.email, name: session.name, sub: session.sub?.slice(0,8)+"…" } : null,
+            isAdmin,
+            adminEmailsConfigured: !!adminEmailsRaw,
+            adminEmailsPreview: adminEmailsRaw
+                ? adminEmailsRaw.slice(0, 5) + "…(" + adminEmailsRaw.length + " chars)"
+                : "NOT SET — add ADMIN_EMAILS in Cloudflare → Workers → Settings → Variables & Secrets",
+            diagnosis: session?.email
+                ? isAdmin ? "✓ Admin access confirmed" : "✗ " + session.email + " not in ADMIN_EMAILS. Check spelling/spaces."
+                : "Not signed in — sign in first then visit this URL again",
+        });
+    }
+
     const singleMatch = path.match(/^\/api\/scripts\/([a-zA-Z0-9-]+)$/);
 
     /* ───────────── Single script ───────────── */
@@ -568,14 +587,15 @@ export async function handleScriptsApi(request, env, path) {
         }
 
         const text = sanitizeText(body.text, MAX_COMMENT_LENGTH);
-        if (!text) return jsonResponse({ error: "Comment text required" }, 400);
+        const hasRating = body.rating !== undefined && body.rating !== null && body.rating !== "";
+
+        // FIX: Allow rating without text, or text without rating. Need at least one.
+        if (!text && !hasRating) return jsonResponse({ error: "Please add a comment or a star rating (or both)." }, 400);
 
         const session = await getSession(request, env);
         const author = session
             ? sanitizeText(session.name, MAX_USERNAME_LENGTH) || "user"
             : sanitizeText(body.author, MAX_USERNAME_LENGTH) || "anonymous";
-
-        const hasRating = body.rating !== undefined && body.rating !== null && body.rating !== "";
         let rating = null;
 
         if (hasRating) {
@@ -866,7 +886,7 @@ ${keyBadge}
 <div class="rating-picker"><span>Your rating:</span><div class="pick-stars" id="pickStars">
 ${[1,2,3,4,5].map(n=>`<button type="button" data-rating="${n}" aria-label="${n} stars">★</button>`).join("")}
 </div><span id="pickLabel">No rating</span></div>
-<textarea id="commentText" maxlength="400" rows="3" placeholder="Does it still work? What do you like about it?" required></textarea>
+<textarea id="commentText" maxlength="400" rows="3" placeholder="Write a comment (optional if you gave a rating) — does it work? What do you like?"></textarea>
 <button type="submit">Post comment</button>
 <div class="note" id="commentNote">A rating is optional. Google sign-in is required to attach a rating.</div>
 </form>
@@ -893,7 +913,9 @@ fetch("/api/me",{credentials:"same-origin",cache:"no-store"}).then(r=>r.json()).
    const data=await res.json().catch(()=>({}));
    if(res.ok){window.location.href="/scripts";return}
    deleteBtn.disabled=false;deleteBtn.textContent="Delete";
-   alert(data.error||"Couldn't delete. Check that your admin email is configured in ADMIN_EMAILS.");
+   const reason = data.reason ? "\n\nDiagnosis: " + data.reason : "";
+   const hint = !data.reason ? "\n\nTip: Visit /api/admin/debug to check your admin config." : "";
+   alert((data.error||"Couldn't delete.") + reason + hint);
  };
 }).catch(()=>{});
 
@@ -912,16 +934,8 @@ const pick=[...document.querySelectorAll("#pickStars button")],pickLabel=documen
 let selectedRating=0;
 function selectRating(n){selectedRating=n;pick.forEach(b=>b.classList.toggle("on",Number(b.dataset.rating)<=n));pickLabel.textContent=n?n+"/5":"No rating"}
 const pendingRating=Number(new URLSearchParams(location.search).get("rate")||0);
-pick.forEach(b=>b.onclick=()=>{
- const n=Number(b.dataset.rating);
- if(!me.loggedIn){
-   const ret=new URL(location.href);
-   ret.searchParams.set("rate",String(n));
-   window.location.href="/auth/login?return="+encodeURIComponent(ret.pathname+ret.search);
-   return;
- }
- selectRating(n);
-});
+// FIX: Don't redirect on click — let user pick rating freely, redirect only on submit if not logged in
+pick.forEach(b=>b.onclick=()=>{ selectRating(Number(b.dataset.rating)); });
 
 const commentsList=document.getElementById("commentsList");
 function ago(ts){const s=Math.max(0,Math.floor((Date.now()-Number(ts||0))/1000));if(s<60)return"just now";if(s<3600)return Math.floor(s/60)+"m ago";if(s<86400)return Math.floor(s/3600)+"h ago";return Math.floor(s/86400)+"d ago"}
@@ -941,6 +955,13 @@ document.getElementById("commentForm").onsubmit=async e=>{
  if(!text)return;
  btn.disabled=true;btn.textContent="Posting…";
  try{
+  // If they selected a rating but aren't logged in, redirect to login first
+  if(selectedRating>0 && !me.loggedIn){
+    const ret=new URL(location.href);
+    ret.searchParams.set("rate",String(selectedRating));
+    window.location.href="/auth/login?return="+encodeURIComponent(ret.pathname+ret.search);
+    return;
+  }
   const r=await fetch("/api/scripts/"+SCRIPT_ID+"/comments",{method:"POST",headers:{"Content-Type":"application/json"},credentials:"same-origin",body:JSON.stringify({text,author,rating:selectedRating||null})});
   const d=await r.json().catch(()=>({}));
   if(!r.ok)throw new Error(d.error||"Couldn't post comment");
@@ -1009,4 +1030,5 @@ export async function prepareScriptForPage(env, id) {
     script.views = await getViews(env, id);
     return script;
 }
+
 
