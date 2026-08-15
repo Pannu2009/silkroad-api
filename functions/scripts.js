@@ -2,6 +2,8 @@
 
 import { getRatingSummary, updateRating, handleRatingApi, deleteRatings } from "./ratings.js";
 import { handleCommentsApi, getComments, deleteComment, deleteComments } from "./comments.js";
+import { getLikeSummary, getLikeCount, getCopyCount, handleLikesApi } from "./likes.js";
+import { getProfile, getOrCreateProfile } from "./profiles.js";
 
 const MAX_CODE_LENGTH = 20000;
 const MAX_TITLE_LENGTH = 120;
@@ -532,314 +534,699 @@ export async function handleScriptsApi(request, env, path) {
     return jsonResponse({ error: "Not found" }, 404);
 }
 
-/* ─────────────────── Gallery page ─────────────────── */
+
 
 export const GALLERY_HTML = `<!DOCTYPE html>
 <html lang="en">
 <head>
 ${SHARED_HEAD(
-    "Roblox Scripts — All, Most Viewed & Latest | dakait.online",
-    "Browse free Roblox scripts. Sort by all, most viewed, or latest. Search Blox Fruits, Grow a Garden, Rivals, Lumber Tycoon and more.",
+    "Roblox Scripts — Browse, Search & Filter | dakait.online",
+    "Browse free Roblox scripts. Sort by trending, most viewed, or latest. Filter by game. Search Blox Fruits, Grow a Garden, Rivals, Lumber Tycoon and more.",
     "https://dakait.online/scripts"
 )}
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600;700&display=swap"/>
 <style>
-:root{--bg:#090a0d;--panel:#111319;--panel2:#171922;--line:#22252f;--text:#e9ebf0;--muted:#777d8d;--accent:#ffb238;--green:#5cd98a;--red:#ff6666;--mono:'JetBrains Mono',monospace;--sans:'Inter',sans-serif}
+:root{--bg:#090a0d;--panel:#111319;--panel2:#171922;--line:#22252f;--text:#e9ebf0;--muted:#777d8d;--accent:#ffb238;--green:#5cd98a;--red:#ff6262;--blue:#6ea8ff;--mono:'JetBrains Mono',monospace;--sans:'Inter',sans-serif}
 *{box-sizing:border-box}html,body{margin:0;padding:0}body{background:var(--bg);color:var(--text);font-family:var(--sans);overflow-x:hidden}
 body:before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.025;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
 .wrap{max-width:1100px;margin:auto;padding:26px 18px 100px;position:relative}
-nav{display:flex;justify-content:space-between;align-items:center;margin-bottom:54px}
+nav{display:flex;justify-content:space-between;align-items:center;margin-bottom:44px;gap:10px;flex-wrap:wrap}
 .brand{font:700 12px var(--mono);letter-spacing:.15em;text-transform:uppercase}.brand a{color:var(--muted);text-decoration:none}.brand span{color:var(--accent)}
-.nav-pill{font:11px var(--mono);color:var(--accent);border:1px solid #4c3b20;border-radius:999px;padding:7px 12px;text-decoration:none}
-.hero{margin-bottom:30px}.eyebrow{font:10px var(--mono);letter-spacing:.2em;text-transform:uppercase;color:var(--accent);margin-bottom:8px}
-h1{font:700 clamp(32px,6vw,56px)/1 var(--mono);margin:0 0 12px}.hl{color:var(--accent)}.hero-sub{max-width:680px;color:var(--muted);font-size:14px}
-.search{margin-top:24px}.search input{width:100%;background:#111218;border:1px solid var(--line);border-radius:9px;padding:13px 15px;color:var(--text);outline:none;font:13px var(--sans)}.search input:focus{border-color:#60471d}
-.tabs{display:flex;gap:7px;flex-wrap:wrap;margin:14px 0 9px}.tab,.filter{border:1px solid var(--line);background:transparent;color:var(--muted);border-radius:999px;padding:8px 12px;font:10px var(--mono);cursor:pointer;text-transform:uppercase;letter-spacing:.05em}.tab.active,.tab:hover,.filter.active,.filter:hover{border-color:#765321;color:var(--accent);background:rgba(255,178,56,.06)}
-.filter-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:32px}.filter{padding:6px 9px;font-size:9px}
-.list-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}.list-head h2{font:10px var(--mono);letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin:0}.count{font:10px var(--mono);color:var(--muted)}
-.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:13px}.card{display:block;position:relative;background:var(--panel);border:1px solid var(--line);border-radius:11px;overflow:hidden;color:inherit;text-decoration:none;transform:translateY(12px);opacity:0;animation:cardIn .55s cubic-bezier(.16,1,.3,1) forwards;transition:border-color .2s,transform .2s,background .2s}.card:hover{border-color:#51401f;background:var(--panel2);transform:translateY(-3px)}
-@keyframes cardIn{to{transform:translateY(0);opacity:1}}.card-img{display:block;width:100%;height:150px;object-fit:cover;background:#0e0f13}.card-img-ph{height:150px;display:grid;place-items:center;background:linear-gradient(135deg,#181a20,#0c0d10);font:35px var(--mono);color:#4d432e}
-.card-body{padding:13px 14px 14px}.game{font:9px var(--mono);color:var(--accent);text-transform:uppercase;letter-spacing:.06em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.title{font:700 15px var(--mono);margin:5px 0 6px}.desc{font-size:12px;line-height:1.5;color:var(--muted);min-height:36px}.tag-row{display:flex;gap:5px;flex-wrap:wrap;margin-top:10px}.tag{font:9px var(--mono);padding:3px 6px;border-radius:5px;color:var(--muted);background:#0b0c10;border:1px solid var(--line)}.tag.green{color:var(--green);border-color:#245637}.stats{display:flex;gap:8px;flex-wrap:wrap;margin-top:11px;font:9px var(--mono);color:var(--muted)}.stats b{color:var(--text);font-weight:500}.works{color:var(--green)!important}.card-foot{display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--line);margin-top:12px;padding-top:10px;font:9px var(--mono);color:#606675}.arrow{color:var(--accent);font-size:14px}.badge{position:absolute;right:9px;top:9px;font:9px var(--mono);padding:4px 7px;border-radius:5px;background:#090a0ddd;border:1px solid var(--line)}.badge.keyless{color:var(--green)}.badge.key{color:var(--red)}
-.empty{grid-column:1/-1;padding:70px 20px;text-align:center;border:1px dashed var(--line);border-radius:12px;color:var(--muted);font:11px var(--mono)}.empty-icon{font-size:30px;margin-bottom:10px}
-.skel{height:300px;border-radius:11px;background:linear-gradient(90deg,#101117,#171922,#101117);background-size:200% 100%;animation:sh 1.2s infinite}@keyframes sh{to{background-position:-200% 0}}
-@media(max-width:820px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:540px){.wrap{padding:20px 14px 80px}.grid{grid-template-columns:1fr}.card-img{height:170px}nav{margin-bottom:38px}}
+.nav-right{display:flex;gap:7px;align-items:center;flex-wrap:wrap}
+.nav-pill{font:11px var(--mono);color:var(--accent);border:1px solid #4c3b20;border-radius:999px;padding:7px 12px;text-decoration:none;white-space:nowrap}
+.nav-muted{color:var(--muted);border-color:var(--line)}
+.hero{margin-bottom:26px}.eyebrow{font:10px var(--mono);letter-spacing:.2em;text-transform:uppercase;color:var(--accent);margin-bottom:8px;opacity:0;animation:fup .5s .05s cubic-bezier(.16,1,.3,1) forwards}
+@keyframes fup{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+h1{font:700 clamp(30px,6vw,54px)/1 var(--mono);margin:0 0 12px;clip-path:inset(0 100% 0 0);animation:revR .7s .2s cubic-bezier(.77,0,.18,1) forwards}
+@keyframes revR{to{clip-path:inset(0 0% 0 0)}}.hl{color:var(--accent)}
+.hero-sub{color:var(--muted);font-size:14px;max-width:680px;opacity:0;animation:fup .5s .45s cubic-bezier(.16,1,.3,1) forwards}
+/* Search */
+.search-wrap{margin-top:20px;position:relative;opacity:0;animation:fup .5s .55s cubic-bezier(.16,1,.3,1) forwards}
+.search-wrap:before{content:"⌕";position:absolute;left:14px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:16px;pointer-events:none}
+.search-wrap input{width:100%;background:#0d0e12;border:1px solid var(--line);border-radius:9px;padding:12px 14px 12px 38px;color:var(--text);outline:none;font:13px var(--sans);transition:border-color .2s}
+.search-wrap input:focus{border-color:#60471d}.search-wrap input::placeholder{color:var(--muted)}
+/* Tabs */
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin:18px 0 8px;opacity:0;animation:fup .4s .65s cubic-bezier(.16,1,.3,1) forwards}
+.tab{border:1px solid var(--line);background:transparent;color:var(--muted);border-radius:999px;padding:8px 13px;font:10px var(--mono);cursor:pointer;text-transform:uppercase;letter-spacing:.05em;transition:all .15s}
+.tab.active,.tab:hover{border-color:#765321;color:var(--accent);background:rgba(255,178,56,.07)}
+.tab.trending.active{border-color:#4c3b8a;color:#a78bfa;background:rgba(167,139,250,.07)}
+/* Filters */
+.filter-row{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:28px;opacity:0;animation:fup .4s .72s cubic-bezier(.16,1,.3,1) forwards}
+.filter{border:1px solid var(--line);background:transparent;color:var(--muted);border-radius:999px;padding:5px 10px;font:9px var(--mono);cursor:pointer;text-transform:uppercase;letter-spacing:.05em;transition:all .15s}
+.filter.active,.filter:hover{border-color:#765321;color:var(--accent);background:rgba(255,178,56,.07)}
+.filter.kl.active{border-color:#245637;color:var(--green);background:rgba(92,217,138,.07)}
+.filter.verified.active{border-color:#2c4a8a;color:var(--blue);background:rgba(110,168,255,.07)}
+/* Active URL filter chip */
+.active-filter-chip{display:inline-flex;align-items:center;gap:5px;background:rgba(255,178,56,.1);border:1px solid #765321;color:var(--accent);border-radius:999px;padding:4px 10px;font:9px var(--mono);cursor:pointer;margin-bottom:10px}
+.active-filter-chip:hover{background:rgba(255,178,56,.18)}
+/* List head */
+.list-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+.list-head h2{font:10px var(--mono);letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin:0}
+.count{font:10px var(--mono);color:var(--muted)}
+/* Grid */
+.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:13px}
+@keyframes cardIn{to{transform:translateY(0);opacity:1}}
+.card{display:block;position:relative;background:var(--panel);border:1px solid var(--line);border-radius:11px;overflow:hidden;color:inherit;text-decoration:none;transform:translateY(14px);opacity:0;animation:cardIn .5s cubic-bezier(.16,1,.3,1) forwards;transition:border-color .2s,transform .22s,background .2s}
+.card:hover{border-color:#51401f;background:var(--panel2);transform:translateY(-4px);box-shadow:0 8px 24px rgba(0,0,0,.5)}
+.card-img{display:block;width:100%;height:148px;object-fit:cover;background:#0e0f13}
+.card-img-ph{height:148px;display:grid;place-items:center;background:linear-gradient(135deg,#181a20,#0c0d10);font:32px var(--mono);color:#4d432e}
+.card-body{padding:12px 13px 13px}
+.game{font:9px var(--mono);color:var(--accent);text-transform:uppercase;letter-spacing:.06em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ctitle{font:700 14.5px var(--mono);margin:5px 0 5px;line-height:1.3}
+.desc{font-size:12px;line-height:1.5;color:var(--muted);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:36px}
+.tag-row{display:flex;gap:4px;flex-wrap:wrap;margin-top:9px}
+.tag{font:9px var(--mono);padding:2px 6px;border-radius:5px;color:var(--muted);background:#0b0c10;border:1px solid var(--line)}
+.tag.green{color:var(--green);border-color:#245637}
+.tag.blue{color:var(--blue);border-color:#2c4a8a}
+.stats{display:flex;gap:7px;flex-wrap:wrap;margin-top:9px;font:9px var(--mono);color:var(--muted)}
+.stats .works{color:var(--green)}
+.card-foot{display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--line);margin-top:10px;padding-top:9px;font:9px var(--mono);color:#606675}
+.arrow{color:var(--accent);font-size:13px;transition:transform .18s}.card:hover .arrow{transform:translateX(3px)}
+.badge{position:absolute;right:9px;top:9px;font:9px var(--mono);padding:3px 7px;border-radius:5px;background:#090a0ddd;border:1px solid var(--line)}
+.badge.keyless{color:var(--green);border-color:#245637}.badge.key{color:var(--red);border-color:#693434}
+.vbadge{position:absolute;left:9px;top:9px;font:8px var(--mono);padding:3px 6px;border-radius:5px;background:#090a0dcc;border:1px solid #2c4a8a;color:var(--blue)}
+.empty{grid-column:1/-1;padding:70px 20px;text-align:center;border:1px dashed var(--line);border-radius:12px;color:var(--muted);font:11px var(--mono)}.empty-icon{font-size:28px;margin-bottom:10px}
+.skel{height:296px;border-radius:11px;background:linear-gradient(90deg,#101117 25%,#171922 50%,#101117 75%);background-size:200% 100%;animation:sh 1.2s infinite}@keyframes sh{to{background-position:-200% 0}}
+@media(max-width:820px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:540px){.wrap{padding:20px 14px 80px}.grid{grid-template-columns:1fr}nav{margin-bottom:30px}}
+@media(prefers-reduced-motion:reduce){*{animation:none !important;transition:none !important;clip-path:none !important}}
 </style>
 </head>
 <body>
 <div class="wrap">
-<nav><div class="brand"><a href="/">dakait<span>.online</span></a></div><div style="display:flex;gap:7px;align-items:center"><span id="accountNav" class="nav-pill" style="display:none"></span><a class="nav-pill" href="/upload-scripts">+ Drop a script</a></div></nav>
+<nav>
+  <div class="brand"><a href="/">dakait<span>.online</span></a></div>
+  <div class="nav-right">
+    <span id="accountNav"></span>
+    <a class="nav-pill" href="/upload-scripts">+ Drop a script</a>
+  </div>
+</nav>
 <section class="hero">
-<div class="eyebrow">Silk Road · Script Hub</div>
-<h1><span class="hl">Loot</span> the gallery.</h1>
-<p class="hero-sub">Free Roblox scripts. Sort by what's new, what's popular, or browse everything. Rate scripts and tell the community if they still work.</p>
-<div class="search"><input id="search" placeholder="Search by title, game, tag — e.g. grow a garden autofarm" autocomplete="off" spellcheck="false"/></div>
+  <div class="eyebrow">Silk Road · Script Hub</div>
+  <h1><span class="hl">Loot</span> the gallery.</h1>
+  <p class="hero-sub">Free Roblox scripts. Trending, most viewed, or brand new — search, filter by game, and grab what you need.</p>
+  <div class="search-wrap"><input id="search" placeholder="Search by title, game, tag — e.g. grow a garden autofarm" autocomplete="off" spellcheck="false"/></div>
 </section>
 
-<div class="tabs" id="tabs">
-<button class="tab active" data-sort="all">All</button>
-<button class="tab" data-sort="views">Most Viewed</button>
-<button class="tab" data-sort="latest">Latest</button>
+<div id="activeChip"></div>
+
+<div class="tabs">
+  <button class="tab" data-sort="latest">Latest</button>
+  <button class="tab trending" data-sort="trending">🔥 Trending</button>
+  <button class="tab" data-sort="views">Most Viewed</button>
+  <button class="tab" data-sort="all">All (A–Z)</button>
 </div>
-<div class="filter-row" id="filters">
-<button class="filter active" data-filter="all">All</button>
-<button class="filter" data-filter="keyless">Keyless</button>
-<button class="filter" data-filter="blox">Blox Fruits</button>
-<button class="filter" data-filter="garden">Grow a Garden</button>
-<button class="filter" data-filter="rivals">Rivals</button>
-<button class="filter" data-filter="lumber">Lumber Tycoon</button>
-<button class="filter" data-filter="steal">Steal a Brainrot</button>
+<div class="filter-row">
+  <button class="filter" data-filter="all">All</button>
+  <button class="filter kl" data-filter="keyless">Keyless</button>
+  <button class="filter verified" data-filter="verified">✓ Verified</button>
+  <button class="filter" data-filter="blox">Blox Fruits</button>
+  <button class="filter" data-filter="garden">Grow a Garden</button>
+  <button class="filter" data-filter="rivals">Rivals</button>
+  <button class="filter" data-filter="lumber">Lumber Tycoon</button>
+  <button class="filter" data-filter="steal">Steal a Brainrot</button>
 </div>
 
 <div class="list-head"><h2 id="sectionTitle">All scripts</h2><span class="count" id="count"></span></div>
 <div id="grid" class="grid"></div>
 </div>
+
 <script>
-const grid=document.getElementById("grid"),search=document.getElementById("search"),count=document.getElementById("count"),sectionTitle=document.getElementById("sectionTitle");
-let all=[],sort="all",filter="all";
+const grid=document.getElementById("grid"),search=document.getElementById("search"),
+  count=document.getElementById("count"),sectionTitle=document.getElementById("sectionTitle");
+let all=[],sort="latest",filter="all";
+
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const ago=ts=>{const s=Math.max(0,Math.floor((Date.now()-Number(ts||0))/1000));if(s<60)return"just now";if(s<3600)return Math.floor(s/60)+"m ago";if(s<86400)return Math.floor(s/3600)+"h ago";return Math.floor(s/86400)+"d ago";};
+
+// Trending score (Hacker News-style: views / (age_hours + 2)^1.5)
+function trendScore(s){
+  const ageHours=Math.max(0,(Date.now()-Number(s.createdAt||0))/(3600*1000));
+  return (Number(s.views||0)+Number(s.likes||0)*2) / Math.pow(ageHours+2,1.5);
+}
+
 function shimmer(){grid.innerHTML=Array.from({length:6},()=>'<div class="skel"></div>').join("")}
-function matches(s){
- if(filter==="keyless")return !s.keysystem;
- if(filter==="all")return true;
- const hay=[s.title,s.description,s.gameName,s.hubName,...(s.tags||[])].join(" ").toLowerCase();
- return hay.includes(filter);
+
+function matchFilter(s){
+  if(filter==="keyless")return !s.keysystem;
+  if(filter==="verified")return !!(s.creatorVerified);
+  if(filter==="all")return true;
+  const hay=[s.title,s.description,s.gameName,s.hubName,...(s.tags||[])].join(" ").toLowerCase();
+  return hay.includes(filter);
 }
+
 function render(){
- let list=all.filter(matches);
- const q=search.value.trim().toLowerCase();
- if(q)list=list.filter(s=>[s.title,s.description,s.gameName,s.hubName,...(s.tags||[])].join(" ").toLowerCase().includes(q));
- if(sort==="views")list.sort((a,b)=>(b.views||0)-(a.views||0)||(b.createdAt-a.createdAt));
- else list.sort((a,b)=>b.createdAt-a.createdAt);
- sectionTitle.textContent=sort==="views"?"Most viewed":sort==="latest"?"Latest drops":"All scripts";
- count.textContent=list.length+(list.length===1?" script":" scripts");
- if(!list.length){grid.innerHTML='<div class="empty"><div class="empty-icon">🏜</div><p>No scripts match this view yet.</p></div>';return}
- grid.innerHTML="";
- list.forEach((s,i)=>{
-   const a=document.createElement("a");a.href="/scripts/"+encodeURIComponent(s.id);a.className="card";a.style.animationDelay=(i*45)+"ms";
-   const img=s.placeId?'<img class="card-img" src="/api/roblox-thumbnail?placeId='+encodeURIComponent(s.placeId)+'" loading="lazy" alt="'+esc(s.title)+'" onerror="this.outerHTML=\\'<div class="card-img-ph">⌗</div>\\'"/>':'<div class="card-img-ph">⌗</div>';
-   const rating=s.rating||{};const avg=Number(rating.average||0);const works=Number(rating.worksPercent||0);
-   const ratingText=rating.total?('★ '+avg.toFixed(1)+' · '+rating.total):'No ratings';
-   const worksText=rating.total?('✓ '+works+'% works'):'— no ratings';
-   const badge=s.keysystem?'<span class="badge key">KEY</span>':'<span class="badge keyless">KEYLESS</span>';
-   const tags=(s.tags||[]).slice(0,4).map(t=>'<span class="tag">'+esc(t)+'</span>').join("");
-   a.innerHTML=img+badge+'<div class="card-body">'+(s.gameName?'<div class="game">'+esc(s.gameName)+'</div>':'')+'<div class="title">'+esc(s.title)+'</div><div class="desc">'+esc(s.description||"No description.")+'</div><div class="tag-row">'+(s.hubName?'<span class="tag green">'+esc(s.hubName)+'</span>':'')+tags+'</div><div class="stats"><span>'+esc(ratingText)+'</span><span class="works">'+esc(worksText)+'</span><span>◉ '+Number(s.views||0)+' views</span></div><div class="card-foot"><span>'+esc(s.username||"anonymous")+' · '+ago(s.createdAt)+'</span><span class="arrow">→</span></div></div>';
-   grid.appendChild(a);
- });
+  let list=all.filter(matchFilter);
+  const q=search.value.trim().toLowerCase();
+  if(q)list=list.filter(s=>[s.title,s.description,s.gameName,s.hubName,...(s.tags||[])].join(" ").toLowerCase().includes(q));
+  if(sort==="views")list.sort((a,b)=>(b.views||0)-(a.views||0)||(b.createdAt-a.createdAt));
+  else if(sort==="trending")list.sort((a,b)=>trendScore(b)-trendScore(a));
+  else if(sort==="all")list.sort((a,b)=>a.title.localeCompare(b.title));
+  else list.sort((a,b)=>b.createdAt-a.createdAt);
+  const labels={latest:"Latest drops",trending:"🔥 Trending",views:"Most viewed",all:"All scripts (A–Z)"};
+  sectionTitle.textContent=labels[sort]||"Scripts";
+  count.textContent=list.length+(list.length===1?" script":" scripts");
+  if(!list.length){grid.innerHTML='<div class="empty"><div class="empty-icon">🏜</div><p>No scripts match. Try a different filter or search.</p></div>';return;}
+  grid.innerHTML="";
+  list.forEach((s,i)=>{
+    const a=document.createElement("a");a.href="/scripts/"+encodeURIComponent(s.id);a.className="card";a.style.animationDelay=(i*38)+"ms";
+    const img=s.placeId?'<img class="card-img" src="/api/roblox-thumbnail?placeId='+encodeURIComponent(s.placeId)+'" loading="lazy" alt="'+esc(s.title)+'" onerror="this.outerHTML=\'<div class=\\"card-img-ph\\">⌗</div>\'"/>':'<div class="card-img-ph">⌗</div>';
+    const r=s.rating||{};const avg=Number(r.average||0);const wp=Number(r.worksPercent||0);
+    const ratingText=r.total?("★ "+avg.toFixed(1)+" · "+r.total):"No ratings";
+    const worksText=r.total?("✓ "+wp+"% works"):"";
+    const badge=s.keysystem?'<span class="badge key">KEY</span>':'<span class="badge keyless">KEYLESS</span>';
+    const vbadge=s.creatorVerified?'<span class="vbadge">✓ VERIFIED</span>':"";
+    const tags=(s.tags||[]).slice(0,3).map(t=>'<span class="tag">'+esc(t)+'</span>').join("");
+    const hubTag=s.hubName?'<span class="tag green">'+esc(s.hubName)+'</span>':"";
+    a.innerHTML=img+badge+vbadge+'<div class="card-body">'+(s.gameName?'<div class="game">'+esc(s.gameName)+'</div>':'')+'<div class="ctitle">'+esc(s.title)+'</div><div class="desc">'+esc(s.description||"No description.")+'</div><div class="tag-row">'+hubTag+tags+'</div><div class="stats"><span>'+esc(ratingText)+'</span>'+(worksText?'<span class="works">'+esc(worksText)+'</span>':'')+'<span>◉ '+Number(s.views||0)+' views</span>'+(s.likes?'<span>❤ '+s.likes+'</span>':'')+'</div><div class="card-foot"><span>'+esc(s.username||"anonymous")+' · '+ago(s.createdAt)+'</span><span class="arrow">→</span></div></div>';
+    grid.appendChild(a);
+  });
 }
-function setSort(v){sort=v;document.querySelectorAll(".tab").forEach(b=>b.classList.toggle("active",b.dataset.sort===v));render()}
-document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>setSort(b.dataset.sort));
-document.querySelectorAll(".filter").forEach(b=>b.onclick=()=>{filter=b.dataset.filter;document.querySelectorAll(".filter").forEach(x=>x.classList.toggle("active",x===b));render()});
-search.oninput=render;
+
+// URL param support: /scripts?sort=trending&filter=garden&q=autofarm
+function readUrlParams(){
+  const p=new URLSearchParams(location.search);
+  const s=p.get("sort");if(s&&["latest","trending","views","all"].includes(s))sort=s;
+  const f=p.get("filter")||p.get("game");
+  if(f){
+    const map={blox:"blox",garden:"garden",rivals:"rivals",lumber:"lumber",steal:"steal",keyless:"keyless",verified:"verified"};
+    const norm=f.toLowerCase().replace(/\s+/g,"-");
+    filter=map[norm]||map[Object.keys(map).find(k=>norm.includes(k))||""]||"all";
+  }
+  const q=p.get("q");if(q)search.value=q;
+  // Show active chip
+  if(filter!=="all"||sort!=="latest"){
+    const chip=document.getElementById("activeChip");
+    const parts=[];
+    if(sort!=="latest")parts.push(sort);
+    if(filter!=="all")parts.push(filter);
+    if(parts.length)chip.innerHTML='<span class="active-filter-chip" onclick="clearFilters()">'+parts.join(" · ")+" ✕</span>";
+  }
+  document.querySelectorAll(".tab").forEach(b=>b.classList.toggle("active",b.dataset.sort===sort));
+  document.querySelectorAll(".filter").forEach(b=>b.classList.toggle("active",b.dataset.filter===filter));
+}
+
+function clearFilters(){sort="latest";filter="all";search.value="";pushState();readUrlParams();render();}
+
+function pushState(){
+  const p=new URLSearchParams();
+  if(sort!=="latest")p.set("sort",sort);
+  if(filter!=="all")p.set("filter",filter);
+  if(search.value.trim())p.set("q",search.value.trim());
+  const qs=p.toString();
+  history.replaceState(null,"",qs?"/scripts?"+qs:"/scripts");
+  document.getElementById("activeChip").innerHTML="";
+  if(filter!=="all"||sort!=="latest"){
+    const parts=[];if(sort!=="latest")parts.push(sort);if(filter!=="all")parts.push(filter);
+    if(parts.length)document.getElementById("activeChip").innerHTML='<span class="active-filter-chip" onclick="clearFilters()">'+parts.join(" · ")+" ✕</span>";
+  }
+}
+
+document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>{sort=b.dataset.sort;document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("active",x===b));pushState();render();});
+document.querySelectorAll(".filter").forEach(b=>b.onclick=()=>{filter=b.dataset.filter;document.querySelectorAll(".filter").forEach(x=>x.classList.toggle("active",x===b));pushState();render();});
+search.oninput=()=>{pushState();render();};
+
 fetch("/api/me",{credentials:"same-origin",cache:"no-store"}).then(r=>r.json()).then(me=>{
- const el=document.getElementById("accountNav");
- el.style.display="inline-block";
- if(me.loggedIn) el.innerHTML='<span style="color:var(--green)">● '+esc(me.name)+(me.isAdmin?' · ADMIN':'')+'</span> <a href="/auth/logout" style="margin-left:6px;color:var(--muted);text-decoration:none">logout</a>';
- else el.innerHTML='<a href="/auth/login?return=%2Fscripts" style="color:var(--accent);text-decoration:none">Sign in</a>';
+  const el=document.getElementById("accountNav");
+  if(me.loggedIn)el.innerHTML='<a href="/creator/'+encodeURIComponent(me.sub)+'" class="nav-pill nav-muted" style="color:var(--green)">● '+esc(me.name)+(me.isAdmin?' · ADMIN':'')+'</a><a href="/auth/logout" class="nav-pill nav-muted">logout</a>';
+  else el.innerHTML='<a href="/auth/login?return=%2Fscripts" class="nav-pill nav-muted">Sign in</a>';
 }).catch(()=>{});
+
 shimmer();
-fetch("/api/scripts").then(r=>{if(!r.ok)throw new Error();return r.json()}).then(d=>{all=d.scripts||[];render()}).catch(()=>{grid.innerHTML='<div class="empty"><div class="empty-icon">⚠</div><p>Couldn\\'t load scripts. Refresh and try again.</p></div>'});
+fetch("/api/scripts").then(r=>{if(!r.ok)throw new Error();return r.json();}).then(d=>{
+  all=d.scripts||[];
+  readUrlParams();
+  render();
+}).catch(()=>{grid.innerHTML='<div class="empty"><div class="empty-icon">⚠</div><p>Couldn\'t load scripts. Refresh and try again.</p></div>';});
 </script>
 </body>
 </html>`;
 
-export function buildDetailHtml(script, thumbnailUrl) {
-    const safeTitle = escapeHtml(script.title);
-    const safeDesc = escapeHtml(script.description || "No description provided.");
-    const safeUser = escapeHtml(script.username || "anonymous");
-    const safeGame = script.gameName ? escapeHtml(script.gameName) : null;
-    const codeHtml = renderCodeWithLineNumbers(script.code);
-    const tags = Array.isArray(script.tags) ? script.tags : [];
-    const tagPills = tags.map(t => `<span class="pill">${escapeHtml(t)}</span>`).join("");
-    const hubPill = script.hubName ? `<span class="pill hub">${escapeHtml(script.hubName)}</span>` : "";
-    const keyBadge = script.keysystem
-        ? `<span class="key-badge haskey">Key System</span>`
-        : `<span class="key-badge keyless">Keyless / No Key</span>`;
-    const imgBlock = thumbnailUrl
-        ? `<img class="hero-img" src="${escapeHtml(thumbnailUrl)}" alt="${safeTitle} thumbnail"/>`
-        : `<div class="hero-img placeholder">⌗</div>`;
 
-    const pageTitle = script.gameName
+
+export function buildDetailHtml(script, thumbnailUrl, profile, likes) {
+    const safeTitle  = escapeHtml(script.title);
+    const safeDesc   = escapeHtml(script.description || "No description provided.");
+    const safeUser   = escapeHtml(script.username || "anonymous");
+    const safeGame   = script.gameName ? escapeHtml(script.gameName) : null;
+    const codeHtml   = renderCodeWithLineNumbers(script.code);
+    const tags       = Array.isArray(script.tags) ? script.tags : [];
+    const tagPills   = tags.map(t => `<span class="pill">${escapeHtml(t)}</span>`).join("");
+    const hubPill    = script.hubName ? `<span class="pill hub">${escapeHtml(script.hubName)}</span>` : "";
+    const keyBadge   = script.keysystem ? `<span class="kbadge hk">Key System</span>` : `<span class="kbadge kl">Keyless</span>`;
+    const updatedAgo = script.updatedAt && script.updatedAt !== script.createdAt
+        ? `Updated ${Math.floor((Date.now() - script.updatedAt) / 86400000)}d ago` : "";
+    const createdDate = new Date(script.createdAt).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
+    const isVerified  = !!(profile?.verified);
+    const verifiedBadge = isVerified ? `<span class="creator-verified">✓ Verified</span>` : "";
+    const creatorAvatar = profile?.picture
+        ? `<img class="creator-avatar" src="${escapeHtml(profile.picture)}" alt="${safeUser}" onerror="this.outerHTML='<span class=\\"creator-avatar-ph\\">'+${safeJsonForHtml(script.username?.slice(0,1)?.toUpperCase()||"?")}+'</span>'"/>`
+        : `<span class="creator-avatar-ph">${escapeHtml(script.username?.slice(0,1)?.toUpperCase() || "?")}</span>`;
+
+    const likeCount = likes?.count || 0;
+    const thumbBg   = thumbnailUrl ? `style="background-image:url('${escapeHtml(thumbnailUrl)}')"` : "";
+
+    const pageTitle  = script.gameName
         ? `${script.title} — ${script.gameName} Script | dakait.online`
-        : `${script.title} | Silk Road Script Hub — dakait.online`;
-    const pageDesc = safeGame
-        ? `Free ${script.gameName} script. ${(script.description || "").slice(0, 120)}. ${script.keysystem ? "Requires key." : "Keyless."}`
-        : `${(script.description || script.title).slice(0, 155)}. Free Roblox script on dakait.online.`;
-    const canonical = `https://dakait.online/scripts/${script.id}`;
+        : `${script.title} | Silk Road Script Hub`;
+    const pageDesc   = [script.gameName ? `Free ${script.gameName} script.` : "", script.description || script.title, script.keysystem ? "Requires key." : "Keyless."].filter(Boolean).join(" ").slice(0, 160);
+    const canonical  = `https://dakait.online/scripts/${script.id}`;
 
     const jsonLd = safeJsonForHtml({
-        "@context": "https://schema.org",
-        "@type": "SoftwareSourceCode",
-        "name": script.title,
-        "description": (script.description || script.title).slice(0, 250),
-        "url": canonical,
-        "programmingLanguage": "Lua",
-        "author": { "@type": "Person", "name": script.username || "anonymous" },
-        "dateCreated": new Date(script.createdAt).toISOString(),
-        "codeRepository": "https://dakait.online/scripts",
-        "keywords": ["roblox script", "roblox", script.gameName, ...(script.tags || [])].filter(Boolean).join(", "),
-        "isAccessibleForFree": true,
-        "publisher": { "@type": "Organization", "name": "Silk Road Script Hub", "url": "https://dakait.online" }
+        "@context": "https://schema.org", "@type": "SoftwareSourceCode",
+        name: script.title, description: (script.description || script.title).slice(0, 250),
+        url: canonical, programmingLanguage: "Lua",
+        author: { "@type": "Person", name: script.username || "anonymous" },
+        dateCreated: new Date(script.createdAt).toISOString(),
+        dateModified: new Date(script.updatedAt || script.createdAt).toISOString(),
+        keywords: ["roblox script", script.gameName, ...(script.tags || [])].filter(Boolean).join(", "),
+        isAccessibleForFree: true,
+        publisher: { "@type": "Organization", name: "Silk Road Script Hub", url: "https://dakait.online" }
     });
 
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
-${SHARED_HEAD(pageTitle, pageDesc.slice(0,160), canonical, thumbnailUrl || "https://dakait.online/og-image.png")}
+${SHARED_HEAD(pageTitle, pageDesc, canonical, thumbnailUrl || "https://dakait.online/og-image.png")}
 <script type="application/ld+json">${jsonLd}<\/script>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600;700&display=swap"/>
 <style>
-:root{--bg:#0c0d10;--panel:#14161b;--line:#232631;--text:#e8e9ed;--muted:#8b8f9c;--accent:#ffb238;--green:#5cd98a;--red:#ff5d5d;--mono:'JetBrains Mono',monospace;--sans:'Inter',sans-serif}
-*{box-sizing:border-box}html,body{margin:0;padding:0}body{background:var(--bg);color:var(--text);font-family:var(--sans);line-height:1.6}
-.wrap{max-width:820px;margin:auto;padding:30px 20px 80px}.page-head{display:flex;justify-content:space-between;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:25px}.brand{font:700 13px var(--mono);letter-spacing:.12em;text-transform:uppercase}.brand a{color:var(--muted);text-decoration:none}.brand span{color:var(--accent)}.nav-link{font:11px var(--mono);color:var(--accent);text-decoration:none}
-.hero{display:flex;gap:20px;flex-wrap:wrap;margin-bottom:18px}.hero-img{width:120px;height:120px;object-fit:cover;border-radius:12px;border:1px solid var(--line);flex-shrink:0}.hero-img.placeholder{display:grid;place-items:center;background:#111319;color:#5c4b2b;font:36px var(--mono)}.hero-text{flex:1;min-width:210px}.game-tag{font:10px var(--mono);color:var(--accent);text-transform:uppercase;letter-spacing:.06em}.hero h1{font:700 clamp(23px,5vw,32px) var(--mono);margin:5px 0 7px}.meta{font:11px var(--mono);color:var(--muted)}.desc{font-size:14px;color:#c9cbd1}.tag-row{display:flex;gap:6px;flex-wrap:wrap;margin:9px 0}.pill{font:9px var(--mono);padding:3px 8px;border:1px solid #4d3a1c;border-radius:5px;color:var(--accent);background:#ffb23810}.pill.hub{color:var(--green);border-color:#28583b;background:#5cd98a0d}.key-badge{display:inline-block;font:10px var(--mono);padding:4px 9px;border-radius:6px}.keyless{color:var(--green);border:1px solid #2c6943}.haskey{color:var(--red);border:1px solid #693434}
-.owner-actions{display:flex;gap:7px;margin-top:11px}.owner-actions a,.owner-actions button{font:11px var(--mono);padding:6px 11px;border-radius:6px;background:transparent;border:1px solid var(--line);color:var(--text);cursor:pointer;text-decoration:none}.delete-btn{color:var(--red)!important;border-color:#663333!important}
-.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:17px;margin-bottom:16px}.code-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:11px}.code-head span{font:10px var(--mono);color:var(--muted);text-transform:uppercase}.copy-btn{background:var(--accent);border:0;border-radius:6px;padding:8px 15px;color:#191205;font:700 11px var(--mono);cursor:pointer}
-pre{margin:0;max-height:480px;overflow:auto;background:#090a0d;border:1px solid var(--line);border-radius:7px;padding:13px 0;font:12px var(--mono);color:#c9e6c4}.code-line{display:block;padding:0 12px;white-space:pre}.ln{color:#5c4a28;margin-right:13px;user-select:none}
-.rating-summary-row{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.panel h3{font:11px var(--mono);color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin:0 0 6px}.summary{font:13px var(--mono)}.big-stars{color:var(--accent);font-size:18px;letter-spacing:1px}.bars{display:flex;flex-direction:column;gap:6px;margin-top:14px}.bar-row{display:grid;grid-template-columns:44px 1fr 46px;gap:8px;align-items:center;font:9px var(--mono);color:var(--muted)}.track{height:7px;background:#090a0d;border-radius:99px;overflow:hidden}.fill{height:100%;background:var(--accent);border-radius:99px}.works-callout{margin-top:12px;padding:10px 12px;border:1px solid #245637;background:#5cd98a0a;border-radius:7px;color:var(--green);font:11px var(--mono)}
-.comment{padding:12px 0;border-bottom:1px dashed var(--line)}.comment:last-child{border-bottom:0}.comment-meta{font:10px var(--mono);color:#a17a3c;margin-bottom:5px}.comment-stars span{color:#3d4048}.comment-stars span.on{color:var(--accent)}.comment-text{font-size:13px;color:#d4d6dc}.comment-form{margin-top:13px;display:flex;flex-direction:column;gap:8px}.comment-form input,.comment-form textarea{background:#090a0d;border:1px solid var(--line);border-radius:6px;color:var(--text);padding:9px 11px;font:13px var(--sans)}.rating-picker{display:flex;align-items:center;gap:7px;color:var(--muted);font:10px var(--mono)}.pick-stars{display:flex;gap:1px}.pick-stars button{border:0;background:transparent;color:#454851;font-size:24px;padding:0;cursor:pointer}.pick-stars button.on,.pick-stars button:hover{color:var(--accent)}.comment-form button{align-self:flex-start;background:var(--accent);border:0;border-radius:6px;padding:8px 15px;color:#1a1305;font:700 11px var(--mono);cursor:pointer}.note{font:10px var(--mono);color:var(--muted)}.empty-comments{font:11px var(--mono);color:var(--muted)}
-@media(max-width:520px){.wrap{padding:20px 14px 70px}.hero-img{width:92px;height:92px}}
+:root{--bg:#090a0d;--panel:#111319;--panel2:#171922;--line:#22252f;--text:#e9ebf0;--muted:#777d8d;--accent:#ffb238;--green:#5cd98a;--red:#ff6262;--blue:#6ea8ff;--purple:#a78bfa;--mono:'JetBrains Mono',monospace;--sans:'Inter',sans-serif}
+*{box-sizing:border-box}html,body{margin:0;padding:0}body{background:var(--bg);color:var(--text);font-family:var(--sans);line-height:1.6;overflow-x:hidden}
+.wrap{max-width:900px;margin:auto;padding:22px 18px 80px}
+/* NAV */
+.top-nav{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;gap:10px;flex-wrap:wrap}
+.brand{font:700 12px var(--mono);letter-spacing:.15em;text-transform:uppercase}.brand a{color:var(--muted);text-decoration:none}.brand span{color:var(--accent)}
+.back-link{font:11px var(--mono);color:var(--muted);text-decoration:none;display:flex;align-items:center;gap:5px;transition:color .15s}.back-link:hover{color:var(--accent)}
+/* HERO */
+.script-hero{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:16px;overflow:hidden;margin-bottom:14px}
+.hero-bg{position:absolute;inset:-10px;background-size:cover;background-position:center;filter:blur(22px) brightness(.18);transform:scale(1.1);pointer-events:none}
+.hero-content{position:relative;display:flex;gap:18px;padding:22px;align-items:flex-start;flex-wrap:wrap}
+.game-thumb-wrap{flex-shrink:0}
+.game-thumb{width:96px;height:96px;border-radius:12px;overflow:hidden;border:1px solid rgba(255,178,56,.2);background:var(--panel2);display:block}
+.game-thumb img{width:100%;height:100%;object-fit:cover}
+.game-thumb-ph{width:96px;height:96px;border-radius:12px;border:1px solid var(--line);background:var(--panel2);display:grid;place-items:center;font:36px var(--mono);color:#4d432e}
+.hero-info{flex:1;min-width:220px}
+.breadcrumb{font:9px var(--mono);color:var(--muted);margin-bottom:8px;display:flex;align-items:center;gap:5px}
+.breadcrumb a{color:var(--accent);text-decoration:none}.breadcrumb a:hover{text-decoration:underline}
+.breadcrumb-sep{opacity:.4}
+h1.script-title{font:700 clamp(20px,4vw,28px)/1.2 var(--mono);margin:0 0 12px;letter-spacing:-.01em}
+/* Creator row */
+.creator-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.creator-link{display:flex;align-items:center;gap:7px;text-decoration:none;color:var(--text);transition:opacity .15s}.creator-link:hover{opacity:.8}
+.creator-avatar{width:26px;height:26px;border-radius:50%;border:1px solid var(--line);object-fit:cover;flex-shrink:0}
+.creator-avatar-ph{width:26px;height:26px;border-radius:50%;border:1px solid var(--line);background:#1e2028;display:grid;place-items:center;font:11px var(--mono);color:var(--accent);flex-shrink:0}
+.creator-name{font:12px var(--mono);color:var(--accent)}
+.creator-verified{display:inline-flex;align-items:center;background:rgba(110,168,255,.1);border:1px solid rgba(110,168,255,.3);color:var(--blue);border-radius:4px;padding:2px 7px;font:8px var(--mono);letter-spacing:.07em;text-transform:uppercase}
+/* Metadata */
+.meta-strip{display:flex;gap:12px;flex-wrap:wrap;font:10px var(--mono);color:var(--muted);margin-bottom:10px;align-items:center}
+.meta-sep{opacity:.3}
+/* Tags */
+.tag-row{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:10px;align-items:center}
+.pill{font:9px var(--mono);padding:3px 8px;border:1px solid #4d3a1c;border-radius:5px;color:var(--accent);background:rgba(255,178,56,.07)}
+.pill.hub{color:var(--green);border-color:#28583b;background:rgba(92,217,138,.06)}
+.kbadge{display:inline-flex;align-items:center;font:9px var(--mono);padding:4px 9px;border-radius:6px;letter-spacing:.05em}
+.kl{color:var(--green);border:1px solid #2c6943;background:rgba(92,217,138,.07)}
+.hk{color:var(--red);border:1px solid #693434;background:rgba(255,98,98,.07)}
+/* Description */
+.script-desc{font-size:13.5px;color:#c0c3cc;line-height:1.65;margin-top:8px}
+/* ACTION BAR */
+.action-bar{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.action-btn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:transparent;color:var(--text);border-radius:8px;padding:9px 14px;font:12px var(--mono);cursor:pointer;transition:all .18s;text-decoration:none;white-space:nowrap}
+.action-btn:hover{border-color:var(--muted)}
+.copy-main{background:var(--accent);border-color:var(--accent);color:#1a0f00;font-weight:700}
+.copy-main:hover{background:#ffca5c;border-color:#ffca5c}
+@keyframes copyPop{0%{transform:scale(1)}30%{transform:scale(1.07)}100%{transform:scale(1)}}
+.copy-main.done{background:var(--green);border-color:var(--green);animation:copyPop .4s ease}
+.like-btn.liked{border-color:#e53e3e;color:#e53e3e;background:rgba(229,62,62,.08)}
+.fav-btn.saved{border-color:var(--accent);color:var(--accent);background:rgba(255,178,56,.08)}
+.report-btn{color:var(--muted);font-size:14px}
+/* Owner actions */
+.owner-bar{display:none;gap:7px;margin-top:8px;flex-wrap:wrap}
+.owner-btn{font:11px var(--mono);padding:6px 11px;border-radius:6px;background:transparent;border:1px solid var(--line);color:var(--text);cursor:pointer;text-decoration:none}
+.owner-btn.del{color:var(--red);border-color:#693434}
+/* REPORT DROPDOWN */
+.report-wrap{position:relative;display:inline-block}
+.report-dropdown{position:absolute;top:calc(100% + 6px);right:0;background:#1a1d24;border:1px solid var(--line);border-radius:10px;padding:10px;display:none;flex-direction:column;gap:5px;z-index:99;min-width:180px;box-shadow:0 8px 24px rgba(0,0,0,.6)}
+.report-dropdown.open{display:flex}
+.report-option{font:11px var(--mono);padding:7px 10px;border-radius:6px;cursor:pointer;color:var(--muted);background:transparent;border:1px solid transparent;transition:all .15s;text-align:left}
+.report-option:hover{border-color:var(--red);color:var(--red);background:rgba(255,98,98,.07)}
+/* STATS GRID */
+.stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px}
+.stat-card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;text-align:center}
+.stat-n{font:700 22px var(--mono);color:var(--accent);line-height:1}
+.stat-l{font:8px var(--mono);color:var(--muted);text-transform:uppercase;letter-spacing:.12em;margin-top:5px}
+/* CODE SECTION */
+.code-section{background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden;margin-bottom:14px}
+.code-header{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;border-bottom:1px solid var(--line);background:#0d0e12}
+.code-lang{font:10px var(--mono);color:var(--muted);text-transform:uppercase;letter-spacing:.1em;display:flex;align-items:center;gap:6px}
+.code-lang:before{content:"";width:7px;height:7px;border-radius:50%;background:#5cd98a}
+.code-actions{display:flex;gap:7px;align-items:center}
+.copy-code-btn{background:var(--accent);border:0;border-radius:6px;padding:7px 14px;color:#1a0f00;font:700 10px var(--mono);cursor:pointer;transition:background .15s;text-transform:uppercase;letter-spacing:.05em}
+.copy-code-btn:hover{background:#ffca5c}.copy-code-btn.done{background:var(--green)}
+pre{margin:0;max-height:500px;overflow:auto;background:#070809;padding:14px 0;font:12.5px/1.6 var(--mono);color:#c9e6c4}
+.code-line{display:block;padding:0 14px;white-space:pre}.ln{color:#3a3f2c;margin-right:14px;user-select:none}
+/* RELATED + CREATOR SECTIONS */
+.section-header{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px}
+.section-header h2{font:700 13px var(--mono);margin:0;color:var(--text)}
+.section-header a{font:10px var(--mono);color:var(--accent);text-decoration:none}
+.mini-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px}
+.mini-card{display:block;background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden;text-decoration:none;color:inherit;transition:border-color .18s,background .18s}
+.mini-card:hover{border-color:#51401f;background:var(--panel2)}
+.mini-img{width:100%;height:80px;object-fit:cover;background:#0d0e12}
+.mini-img-ph{height:80px;display:grid;place-items:center;background:var(--panel2);font:22px var(--mono);color:#4d432e}
+.mini-body{padding:9px 10px 10px}
+.mini-title{font:700 12px var(--mono);margin:0 0 4px;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}
+.mini-meta{font:9px var(--mono);color:var(--muted)}
+/* COMMUNITY */
+.community{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px;margin-bottom:14px}
+.community h3{font:10px var(--mono);color:var(--muted);text-transform:uppercase;letter-spacing:.12em;margin:0 0 14px}
+.rating-overview{display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start;margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid var(--line)}
+.rating-score-big{text-align:center;min-width:80px}
+.rscore{font:700 40px var(--mono);color:var(--accent);line-height:1}
+.rstars{font-size:16px;color:var(--accent);letter-spacing:1px}
+.rcount{font:9px var(--mono);color:var(--muted);margin-top:3px}
+.rbar-section{flex:1;min-width:160px}
+.rbar-row{display:grid;grid-template-columns:52px 1fr 42px;gap:8px;align-items:center;margin-bottom:5px;font:9px var(--mono);color:var(--muted)}
+.rtrack{height:6px;background:#0b0c10;border-radius:99px;overflow:hidden}
+.rfill{height:100%;background:var(--accent);border-radius:99px;transition:width .5s ease}
+.works-tag{display:inline-flex;align-items:center;gap:5px;margin-top:10px;background:rgba(92,217,138,.08);border:1px solid #245637;border-radius:6px;padding:6px 10px;font:10px var(--mono);color:var(--green)}
+/* Comments */
+.comment{padding:12px 0;border-bottom:1px dashed var(--line)}.comment:last-of-type{border-bottom:0}
+.cmeta{font:9px var(--mono);color:#a17a3c;margin-bottom:5px;display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.cstars{color:var(--accent)}
+.ctext{font-size:13px;color:#d0d3da}
+.no-comments{font:11px var(--mono);color:var(--muted)}
+/* Comment form */
+.comment-form-section{margin-top:16px;padding-top:16px;border-top:1px solid var(--line)}
+.comment-form-section h4{font:10px var(--mono);color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin:0 0 12px}
+.cf-input{width:100%;background:#0a0b0e;border:1px solid var(--line);border-radius:7px;color:var(--text);padding:10px 12px;font:13px var(--sans);outline:none;transition:border-color .2s;margin-bottom:8px}
+.cf-input:focus{border-color:#60471d}
+textarea.cf-input{resize:vertical;min-height:72px;font-family:var(--sans)}
+.star-row{display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+.star-row label{font:9px var(--mono);color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+.pick-stars{display:flex;gap:0}
+.pick-stars button{border:0;background:transparent;color:#2e3040;font-size:26px;padding:1px 2px;cursor:pointer;transition:color .1s,transform .1s;line-height:1}
+.pick-stars button.on,.pick-stars button.hover{color:var(--accent)}
+.pick-stars button:hover{transform:scale(1.2)}
+.star-hint{font:9px var(--mono);color:var(--muted);min-width:50px}
+.cf-submit{background:var(--accent);border:0;border-radius:7px;padding:10px 18px;color:#1a0f00;font:700 11px var(--mono);cursor:pointer;transition:background .15s;text-transform:uppercase;letter-spacing:.05em}
+.cf-submit:hover{background:#ffca5c}.cf-submit:disabled{opacity:.5;cursor:not-allowed}
+.cf-note{font:9px var(--mono);color:var(--muted);margin-top:8px;line-height:1.5}
+@media(max-width:600px){.stats-grid{grid-template-columns:repeat(2,1fr)}.mini-grid{grid-template-columns:repeat(2,1fr)}.hero-content{padding:16px}.game-thumb,.game-thumb-ph{width:72px;height:72px}}
+@media(max-width:440px){.mini-grid{grid-template-columns:1fr}}
+@media(prefers-reduced-motion:reduce){*{animation:none !important;transition:none !important}}
 </style>
 </head>
 <body>
 <div class="wrap">
-<header class="page-head"><div class="brand"><a href="/">dakait<span>.online</span></a></div><a class="nav-link" href="/scripts">← Gallery</a></header>
-<div class="hero">
-${imgBlock}
-<div class="hero-text">
-${safeGame?`<div class="game-tag">For: ${safeGame}</div>`:""}
-<h1>${safeTitle}</h1>
-<div class="meta">@${safeUser} · ${Number(script.views||0)} views</div>
-<div class="tag-row">${hubPill}${tagPills}</div>
-${keyBadge}
-<p class="desc">${safeDesc}</p>
-<div class="owner-actions" id="ownerActions" style="display:none"><a href="/scripts/${encodeURIComponent(script.id)}/edit">Edit</a><button class="delete-btn" id="deleteBtn">Delete</button></div>
-</div>
+
+<header class="top-nav">
+  <div class="brand"><a href="/">dakait<span>.online</span></a></div>
+  <a class="back-link" href="/scripts">← Gallery</a>
+</header>
+
+<!-- HERO -->
+<div class="script-hero">
+  ${thumbnailUrl ? `<div class="hero-bg" ${thumbBg}></div>` : ""}
+  <div class="hero-content">
+    <div class="game-thumb-wrap">
+      ${thumbnailUrl
+        ? `<div class="game-thumb"><img src="${escapeHtml(thumbnailUrl)}" alt="${safeGame || "Game"} icon"/></div>`
+        : `<div class="game-thumb-ph">⌗</div>`}
+    </div>
+    <div class="hero-info">
+      <div class="breadcrumb">
+        <a href="/scripts">Scripts</a>
+        ${safeGame ? `<span class="breadcrumb-sep">›</span><a href="/scripts?filter=${encodeURIComponent(script.gameName || "")}">${safeGame}</a>` : ""}
+      </div>
+      <h1 class="script-title">${safeTitle}</h1>
+      <div class="creator-row">
+        <a class="creator-link" href="/creator/${encodeURIComponent(script.ownerSub || script.username || "unknown")}">
+          ${creatorAvatar}
+          <span class="creator-name">@${safeUser}</span>
+        </a>
+        ${verifiedBadge}
+      </div>
+      <div class="meta-strip">
+        <span>Added ${createdDate}</span>
+        ${updatedAgo ? `<span class="meta-sep">·</span><span>${updatedAgo}</span>` : ""}
+        <span class="meta-sep">·</span>
+        <span id="viewCount">${Number(script.views || 0).toLocaleString()}</span> views
+      </div>
+      <div class="tag-row">
+        ${hubPill}${tagPills}
+        ${keyBadge}
+      </div>
+      <p class="script-desc">${safeDesc}</p>
+      <div class="action-bar">
+        <button class="action-btn copy-main" id="copyMainBtn">⧉ Copy Script</button>
+        <button class="action-btn like-btn" id="likeBtn">❤ <span id="likeCount">${likeCount}</span></button>
+        <button class="action-btn fav-btn" id="favBtn">★ Save</button>
+        <div class="report-wrap">
+          <button class="action-btn report-btn" id="reportToggle" title="Report this script">⚑</button>
+          <div class="report-dropdown" id="reportDropdown">
+            ${["spam","malware","stolen","broken","inappropriate","other"].map(r =>
+              `<button class="report-option" data-reason="${r}">${{spam:"Spam",malware:"Malware / Dangerous",stolen:"Stolen content",broken:"Broken / Not working",inappropriate:"Inappropriate",other:"Other"}[r]}</button>`
+            ).join("")}
+          </div>
+        </div>
+      </div>
+      <div class="owner-bar" id="ownerBar">
+        <a class="owner-btn" href="/scripts/${encodeURIComponent(script.id)}/edit">Edit</a>
+        <button class="owner-btn del" id="deleteBtn">Delete</button>
+      </div>
+    </div>
+  </div>
 </div>
 
-<section class="panel">
-<div class="code-head"><span>script.lua</span><button class="copy-btn" id="copyBtn">Copy</button></div>
-<pre id="codeBlock">${codeHtml}</pre>
+<!-- STATS -->
+<div class="stats-grid">
+  <div class="stat-card"><div class="stat-n" id="statViews">${Number(script.views || 0).toLocaleString()}</div><div class="stat-l">Views</div></div>
+  <div class="stat-card"><div class="stat-n" id="statCopies">—</div><div class="stat-l">Copies</div></div>
+  <div class="stat-card"><div class="stat-n" id="statLikes">${likeCount}</div><div class="stat-l">Likes</div></div>
+  <div class="stat-card"><div class="stat-n" id="statRating">—</div><div class="stat-l">Avg Rating</div></div>
+</div>
+
+<!-- CODE -->
+<section class="code-section">
+  <div class="code-header">
+    <div class="code-lang">script.lua</div>
+    <div class="code-actions">
+      <button class="copy-code-btn" id="copyCodeBtn">Copy</button>
+    </div>
+  </div>
+  <pre id="codeBlock">${codeHtml}</pre>
 </section>
 
-<section class="panel">
-<div class="rating-summary-row">
-<div><h3>Community rating</h3><div class="summary" id="ratingSummary">Loading ratings…</div></div>
-<div class="big-stars" id="bigStars">★★★★★</div>
-</div>
-<div class="bars" id="ratingBars"></div>
-<div class="works-callout" id="worksCallout">Loading community feedback…</div>
-<p class="note" id="ratingNote">To leave a star rating, sign in with Google and post a comment below.</p>
+<!-- RELATED SCRIPTS -->
+<section id="relatedSection" style="display:none">
+  <div class="section-header">
+    <h2 id="relatedTitle">More scripts for this game</h2>
+    ${safeGame ? `<a href="/scripts?filter=${encodeURIComponent(script.gameName || "")}">See all →</a>` : ""}
+  </div>
+  <div class="mini-grid" id="relatedGrid"></div>
 </section>
 
-<section class="panel">
-<h3>Community comments</h3>
-<div id="commentsList"><p class="empty-comments">Loading…</p></div>
-<form class="comment-form" id="commentForm">
-<input id="commentName" maxlength="40" placeholder="Your name (optional for comments)"/>
-<div class="rating-picker"><span>Your rating:</span><div class="pick-stars" id="pickStars">
-${[1,2,3,4,5].map(n=>`<button type="button" data-rating="${n}" aria-label="${n} stars">★</button>`).join("")}
-</div><span id="pickLabel">No rating</span></div>
-<textarea id="commentText" maxlength="400" rows="3" placeholder="Write a comment (optional if you gave a rating) — does it work? What do you like?"></textarea>
-<button type="submit">Post comment</button>
-<div class="note" id="commentNote">A rating is optional. Google sign-in is required to attach a rating.</div>
-</form>
+<!-- MORE FROM CREATOR -->
+<section id="creatorSection" style="display:none">
+  <div class="section-header">
+    <h2>More from <span style="color:var(--accent)">@${safeUser}</span></h2>
+    <a href="/creator/${encodeURIComponent(script.ownerSub || script.username || "unknown")}">View profile →</a>
+  </div>
+  <div class="mini-grid" id="creatorGrid"></div>
 </section>
+
+<!-- COMMUNITY -->
+<section class="community">
+  <h3>Community rating</h3>
+  <div class="rating-overview" id="ratingOverview">
+    <div class="rating-score-big"><div class="rscore" id="rscoreNum">—</div><div class="rstars" id="rscoreStars">☆☆☆☆☆</div><div class="rcount" id="rscoreCount">No ratings</div></div>
+    <div class="rbar-section" id="rbarSection"></div>
+  </div>
+  <div id="worksTag"></div>
+  <div style="height:16px"></div>
+  <h3>Comments</h3>
+  <div id="commentsList"><p class="no-comments">Loading…</p></div>
+  <div class="comment-form-section">
+    <h4>Leave a review</h4>
+    <input class="cf-input" id="cfName" maxlength="40" placeholder="Your name (optional)"/>
+    <div class="star-row">
+      <label>Rating</label>
+      <div class="pick-stars" id="pickStars">
+        ${[1,2,3,4,5].map(n=>`<button type="button" data-r="${n}" aria-label="${n} stars">★</button>`).join("")}
+      </div>
+      <span class="star-hint" id="starHint">No rating</span>
+    </div>
+    <textarea class="cf-input" id="cfText" maxlength="400" rows="3" placeholder="Write a comment — does it work? Tips? (optional if you give a rating)"></textarea>
+    <button class="cf-submit" id="cfSubmit">Post review</button>
+    <p class="cf-note" id="cfNote">Rating requires Google sign-in. Text comments can be posted anonymously.</p>
+  </div>
+</section>
+
 </div>
+
 <script>
-const SCRIPT_ID=${safeJsonForHtml(script.id)}, RAW_CODE=${safeJsonForHtml(script.code)};
-const copyBtn=document.getElementById("copyBtn");
-copyBtn.onclick=async()=>{try{await navigator.clipboard.writeText(RAW_CODE);copyBtn.textContent="Copied";setTimeout(()=>copyBtn.textContent="Copy",1300)}catch{copyBtn.textContent="Select and copy"}};
+const SCRIPT_ID=${safeJsonForHtml(script.id)},RAW_CODE=${safeJsonForHtml(script.code)};
+const OWNER_SUB=${safeJsonForHtml(script.ownerSub||null)};
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const ago=ts=>{const s=Math.max(0,Math.floor((Date.now()-Number(ts||0))/1000));if(s<60)return"just now";if(s<3600)return Math.floor(s/60)+"m ago";if(s<86400)return Math.floor(s/3600)+"h ago";return Math.floor(s/86400)+"d ago";};
 
-let me={loggedIn:false,isAdmin:false,sub:null,ready:false};
-const ownerSub=${safeJsonForHtml(script.ownerSub||null)};
-const authReady=fetch("/api/me",{credentials:"same-origin",cache:"no-store"})
- .then(r=>r.ok?r.json():{loggedIn:false})
- .then(data=>{
-   me={...data,ready:true};
-   if(me.loggedIn && pendingRating>=1 && pendingRating<=5){ selectRating(pendingRating); history.replaceState({},"",location.pathname); }
-   if((me.loggedIn&&me.sub===ownerSub)||(me.loggedIn&&me.isAdmin)){
-     document.getElementById("ownerActions").style.display="flex";
-   }
-   document.getElementById("commentNote").textContent=me.loggedIn
-     ? "You are signed in. You can rate and comment."
-     : "Sign in with Google to rate or comment.";
-   return me;
- }).catch(()=>{ me={loggedIn:false,isAdmin:false,sub:null,ready:true}; return me; });
-
-const deleteBtn=document.getElementById("deleteBtn");
-if(deleteBtn)deleteBtn.onclick=async()=>{
-   await authReady;
-   if(!me.loggedIn){ window.location.href="/auth/login?return="+encodeURIComponent(location.pathname); return; }
-   if(!((me.sub===ownerSub)||me.isAdmin)){ alert("You do not have permission to delete this script."); return; }
-   if(!confirm("Delete this script? This also removes its comments and ratings."))return;
-   deleteBtn.disabled=true;deleteBtn.textContent="Deleting…";
-   const res=await fetch("/api/scripts/"+encodeURIComponent(SCRIPT_ID),{method:"DELETE",credentials:"same-origin"});
-   const data=await res.json().catch(()=>({}));
-   if(res.ok){window.location.href="/scripts";return}
-   deleteBtn.disabled=false;deleteBtn.textContent="Delete";
-   alert(data.error||"Couldn't delete.");
- };
-
-const summary=document.getElementById("ratingSummary"),bars=document.getElementById("ratingBars"),big=document.getElementById("bigStars"),works=document.getElementById("worksCallout"),ratingNote=document.getElementById("ratingNote");
-function renderRatings(d){
- const total=Number(d.total||0),avg=Number(d.average||0),dist=d.distribution||{};
- summary.textContent=total?avg.toFixed(1)+"/5 · "+total+(total===1?" rating":" ratings"):"No ratings yet";
- big.textContent=[1,2,3,4,5].map(n=>n<=Math.round(avg)?"★":"☆").join("");
- bars.innerHTML=[5,4,3,2,1].map(n=>{const c=Number(dist[n]||0),p=total?Math.round(c*100/total):0;return '<div class="bar-row"><span>'+n+' star'+(n===1?'':'s')+'</span><div class="track"><div class="fill" style="width:'+p+'%"></div></div><span>'+p+'%</span></div>'}).join("");
- if(total)works.textContent=d.worksPercent+"% of rated users gave 5 stars — the community says it works.";
- else works.textContent="No ratings yet — be the first to test it.";
- if(d.myRating)ratingNote.textContent="Your current rating: "+d.myRating+"/5. You can change it by posting another rating.";
+/* ── Copy animations ── */
+function doCopy(code,mainBtn,codeBtn){
+  navigator.clipboard.writeText(code).then(()=>{
+    [mainBtn,codeBtn].forEach(b=>{if(!b)return;b.classList.add("done");const orig=b.textContent;b.textContent=b===mainBtn?"✓ Copied!":"Copied";setTimeout(()=>{b.classList.remove("done");b.textContent=orig;},1500);});
+    // Record copy for rewards
+    fetch("/api/scripts/"+SCRIPT_ID+"/copy",{method:"POST",credentials:"same-origin"}).catch(()=>{});
+    document.getElementById("statCopies").textContent="+1 (counting)";
+  }).catch(()=>{if(mainBtn)mainBtn.textContent="Select & copy";});
 }
-async function loadRatings(){try{const r=await fetch("/api/scripts/"+SCRIPT_ID+"/ratings");renderRatings(await r.json())}catch{summary.textContent="Couldn't load ratings."}}
-const pick=[...document.querySelectorAll("#pickStars button")],pickLabel=document.getElementById("pickLabel");
-let selectedRating=0;
-function selectRating(n){selectedRating=n;pick.forEach(b=>b.classList.toggle("on",Number(b.dataset.rating)<=n));pickLabel.textContent=n?n+"/5":"No rating"}
-const pendingRating=Number(new URLSearchParams(location.search).get("rate")||0);
-// FIX: Don't redirect on click — let user pick rating freely, redirect only on submit if not logged in
-pick.forEach(b=>b.onclick=()=>{ selectRating(Number(b.dataset.rating)); });
+document.getElementById("copyMainBtn").onclick=()=>doCopy(RAW_CODE,document.getElementById("copyMainBtn"),document.getElementById("copyCodeBtn"));
+document.getElementById("copyCodeBtn").onclick=()=>doCopy(RAW_CODE,document.getElementById("copyMainBtn"),document.getElementById("copyCodeBtn"));
 
-const commentsList=document.getElementById("commentsList");
-function ago(ts){const s=Math.max(0,Math.floor((Date.now()-Number(ts||0))/1000));if(s<60)return"just now";if(s<3600)return Math.floor(s/60)+"m ago";if(s<86400)return Math.floor(s/3600)+"h ago";return Math.floor(s/86400)+"d ago"}
-function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
-function stars(r){return [1,2,3,4,5].map(n=>'<span class="'+(n<=Number(r||0)?"on":"")+'">★</span>').join("")}
-async function loadComments(){
- try{
-  const r=await fetch("/api/scripts/"+SCRIPT_ID+"/comments");const d=await r.json();const list=d.comments||[];
-  if(!list.length){commentsList.innerHTML='<p class="empty-comments">No comments yet.</p>';return}
-  commentsList.innerHTML=list.map(c=>'<div class="comment"><div class="comment-meta">@'+esc(c.author||"anonymous")+' · '+ago(c.createdAt)+(c.rating?'<span class="comment-stars"> · '+stars(c.rating)+'</span>':"")+'</div><div class="comment-text">'+esc(c.text)+'</div></div>').join("");
- }catch{commentsList.innerHTML='<p class="empty-comments">Couldn\\'t load comments.</p>'}
-}
-document.getElementById("commentForm").onsubmit=async e=>{
- e.preventDefault();
- const note=document.getElementById("commentNote"),btn=e.currentTarget.querySelector("button[type=submit]");
- const text=document.getElementById("commentText").value.trim();
- if(!text && !selectedRating){ note.textContent="Choose a star rating or write a comment."; return; }
- await authReady;
- if(!me.loggedIn){
-   const ret=new URL(location.href);
-   if(selectedRating)ret.searchParams.set("rate",String(selectedRating));
-   window.location.href="/auth/login?return="+encodeURIComponent(ret.pathname+ret.search);
-   return;
- }
- btn.disabled=true;btn.textContent="Posting…";
- try{
-  const r=await fetch("/api/scripts/"+SCRIPT_ID+"/comments",{method:"POST",headers:{"Content-Type":"application/json"},credentials:"same-origin",body:JSON.stringify({text,rating:selectedRating||null})});
+/* ── Auth & owner actions ── */
+let me={loggedIn:false,isAdmin:false,sub:null};
+const authP=fetch("/api/me",{credentials:"same-origin",cache:"no-store"}).then(r=>r.ok?r.json():{loggedIn:false}).then(d=>{me=d;
+  const isMine=(me.loggedIn&&me.sub===OWNER_SUB)||(me.loggedIn&&me.isAdmin);
+  if(isMine)document.getElementById("ownerBar").style.display="flex";
+  const pr=Number(new URLSearchParams(location.search).get("rate")||0);
+  if(me.loggedIn&&pr>=1&&pr<=5){selectStar(pr);history.replaceState({},"",location.pathname);}
+  updateNote();
+  return d;
+}).catch(()=>{me={loggedIn:false,isAdmin:false,sub:null};return me;});
+
+document.getElementById("deleteBtn").onclick=async()=>{
+  await authP;
+  if(!confirm("Delete this script? Also removes comments, ratings, and likes."))return;
+  const btn=document.getElementById("deleteBtn");btn.disabled=true;btn.textContent="Deleting…";
+  const r=await fetch("/api/scripts/"+encodeURIComponent(SCRIPT_ID),{method:"DELETE",credentials:"same-origin"});
   const d=await r.json().catch(()=>({}));
-  if(!r.ok)throw new Error(d.error||"Couldn't post comment");
-  document.getElementById("commentText").value="";
-  selectRating(0);
-  note.textContent=d.rating?"Comment and rating posted.":"Comment posted.";
-  await Promise.all([loadComments(),loadRatings()]);
- }catch(err){note.textContent=err.message||"Couldn't post comment."}
- finally{btn.disabled=false;btn.textContent="Post comment"}
+  if(r.ok){location.href="/scripts";}
+  else{btn.disabled=false;btn.textContent="Delete";alert(d.error||"Couldn't delete. "+JSON.stringify(d.details||{}));}
 };
+
+/* ── Likes ── */
+let likeCount=${likeCount},liked=false;
+fetch("/api/scripts/"+SCRIPT_ID+"/likes",{credentials:"same-origin",cache:"no-store"}).then(r=>r.json()).then(d=>{
+  liked=!!d.liked;likeCount=Number(d.count||0);updateLikeBtn();
+  document.getElementById("statLikes").textContent=likeCount;
+}).catch(()=>{});
+function updateLikeBtn(){const b=document.getElementById("likeBtn");b.innerHTML="❤ <span>"+likeCount+"</span>";b.classList.toggle("liked",liked);}
+document.getElementById("likeBtn").onclick=async()=>{
+  await authP;
+  if(!me.loggedIn){location.href="/auth/login?return="+encodeURIComponent(location.pathname);return;}
+  liked=!liked;likeCount+=liked?1:-1;updateLikeBtn();document.getElementById("statLikes").textContent=likeCount;
+  fetch("/api/scripts/"+SCRIPT_ID+"/likes",{method:"POST",credentials:"same-origin"}).then(r=>r.json()).then(d=>{liked=!!d.liked;likeCount=Number(d.count||0);updateLikeBtn();document.getElementById("statLikes").textContent=likeCount;}).catch(()=>{liked=!liked;likeCount+=liked?1:-1;updateLikeBtn();});
+};
+
+/* ── Favorites ── */
+let saved=false;
+fetch("/api/scripts/"+SCRIPT_ID+"/favorites",{credentials:"same-origin",cache:"no-store"}).then(r=>r.json()).then(d=>{saved=!!d.favorited;updateFavBtn();}).catch(()=>{});
+function updateFavBtn(){const b=document.getElementById("favBtn");b.textContent=saved?"★ Saved":"★ Save";b.classList.toggle("saved",saved);}
+document.getElementById("favBtn").onclick=async()=>{
+  await authP;
+  if(!me.loggedIn){location.href="/auth/login?return="+encodeURIComponent(location.pathname);return;}
+  saved=!saved;updateFavBtn();
+  fetch("/api/scripts/"+SCRIPT_ID+"/favorites",{method:"POST",credentials:"same-origin"}).then(r=>r.json()).then(d=>{saved=!!d.favorited;updateFavBtn();}).catch(()=>{saved=!saved;updateFavBtn();});
+};
+
+/* ── Report ── */
+const reportToggle=document.getElementById("reportToggle"),reportDrop=document.getElementById("reportDropdown");
+reportToggle.onclick=e=>{e.stopPropagation();reportDrop.classList.toggle("open");};
+document.addEventListener("click",()=>reportDrop.classList.remove("open"));
+reportDrop.querySelectorAll(".report-option").forEach(b=>b.onclick=async()=>{
+  await authP;
+  if(!me.loggedIn){location.href="/auth/login?return="+encodeURIComponent(location.pathname);return;}
+  reportDrop.classList.remove("open");
+  await fetch("/api/scripts/"+SCRIPT_ID+"/report",{method:"POST",headers:{"Content-Type":"application/json"},credentials:"same-origin",body:JSON.stringify({reason:b.dataset.reason})}).catch(()=>{});
+  reportToggle.textContent="✓";reportToggle.title="Reported — thank you.";setTimeout(()=>{reportToggle.textContent="⚑";reportToggle.title="Report this script";},2500);
+});
+
+/* ── Copies stat ── */
+fetch("/api/scripts/"+SCRIPT_ID+"/copies").then(r=>r.json()).then(d=>document.getElementById("statCopies").textContent=Number(d.count||0).toLocaleString()).catch(()=>document.getElementById("statCopies").textContent="—");
+
+/* ── Ratings ── */
+function renderRatings(d){
+  const total=Number(d.total||0),avg=Number(d.average||0),dist=d.distribution||{};
+  document.getElementById("rscoreNum").textContent=total?avg.toFixed(1):"—";
+  document.getElementById("rscoreStars").textContent=[1,2,3,4,5].map(n=>n<=Math.round(avg)?"★":"☆").join("");
+  document.getElementById("rscoreCount").textContent=total?total+(total===1?" rating":" ratings"):"No ratings yet";
+  document.getElementById("statRating").textContent=total?avg.toFixed(1)+" ★":"—";
+  const bars=document.getElementById("rbarSection");
+  bars.innerHTML=[5,4,3,2,1].map(n=>{const c=Number(dist[n]||0),p=total?Math.round(c*100/total):0;
+    return '<div class="rbar-row"><span>'+n+'★</span><div class="rtrack"><div class="rfill" style="width:'+p+'%"></div></div><span style="text-align:right">'+p+'%</span></div>';}).join("");
+  const wt=document.getElementById("worksTag");
+  if(total&&d.worksPercent>0)wt.innerHTML='<div class="works-tag">✓ '+d.worksPercent+'% gave 5 stars — community says it works</div>';
+  if(d.myRating)document.getElementById("cfNote").textContent="Your rating: "+d.myRating+"/5. Submit again to update it.";
+}
+async function loadRatings(){try{const r=await fetch("/api/scripts/"+SCRIPT_ID+"/ratings",{credentials:"same-origin"});renderRatings(await r.json());}catch{document.getElementById("rscoreNum").textContent="—";}}
+
+/* ── Comments ── */
+async function loadComments(){
+  const cl=document.getElementById("commentsList");
+  try{
+    const r=await fetch("/api/scripts/"+SCRIPT_ID+"/comments");const d=await r.json();const list=d.comments||[];
+    if(!list.length){cl.innerHTML='<p class="no-comments">No reviews yet — be the first.</p>';return;}
+    cl.innerHTML=list.map(c=>'<div class="comment"><div class="cmeta"><b>@'+esc(c.author||"anonymous")+'</b> · '+ago(c.createdAt)+(c.rating?'<span class="cstars"> '+"★".repeat(c.rating)+"☆".repeat(5-c.rating)+'</span>':'')+'</div>'+(c.text?'<div class="ctext">'+esc(c.text)+'</div>':'')+'</div>').join("");
+  }catch{cl.innerHTML='<p class="no-comments">Couldn\'t load comments.</p>';}
+}
+
+/* ── Star picker ── */
+let selectedStar=0;
+const picks=[...document.querySelectorAll("#pickStars button")],starHint=document.getElementById("starHint");
+function selectStar(n){selectedStar=n;picks.forEach(b=>b.classList.toggle("on",Number(b.dataset.r)<=n));starHint.textContent=n?n+"/5 stars":"No rating";}
+picks.forEach(b=>{
+  b.onmouseover=()=>picks.forEach(x=>x.classList.toggle("hover",Number(x.dataset.r)<=Number(b.dataset.r)));
+  b.onmouseleave=()=>picks.forEach(x=>x.classList.remove("hover"));
+  b.onclick=()=>selectStar(Number(b.dataset.r));
+});
+function updateNote(){const n=document.getElementById("cfNote");if(!n)return;if(selectedStar&&!me.loggedIn)n.textContent="⚠ Sign-in required to save a rating — clicking Post will redirect you to sign in first.";else if(me.loggedIn&&selectedStar)n.textContent="Your rating will be saved to your account.";else n.textContent="Rating requires Google sign-in. Text comments can be posted anonymously.";}
+picks.forEach(b=>b.addEventListener("click",updateNote));
+
+/* ── Submit review ── */
+document.getElementById("cfSubmit").onclick=async()=>{
+  const text=document.getElementById("cfText").value.trim(),note=document.getElementById("cfNote"),btn=document.getElementById("cfSubmit");
+  if(!text&&!selectedStar){note.textContent="Write a comment or give a star rating.";return;}
+  await authP;
+  if(selectedStar&&!me.loggedIn){const ret=new URL(location.href);ret.searchParams.set("rate",String(selectedStar));location.href="/auth/login?return="+encodeURIComponent(ret.pathname+ret.search);return;}
+  btn.disabled=true;btn.textContent="Posting…";
+  try{
+    const r=await fetch("/api/scripts/"+SCRIPT_ID+"/comments",{method:"POST",headers:{"Content-Type":"application/json"},credentials:"same-origin",body:JSON.stringify({text,rating:selectedStar||null,author:document.getElementById("cfName").value.trim()})});
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok)throw new Error(d.error||"Couldn't post");
+    document.getElementById("cfText").value="";document.getElementById("cfName").value="";selectStar(0);note.textContent=d.rating?"Review posted with rating!":"Comment posted.";
+    await Promise.all([loadComments(),loadRatings()]);
+  }catch(err){note.textContent=err.message||"Couldn't post. Try again.";}
+  finally{btn.disabled=false;btn.textContent="Post review";}
+};
+
+/* ── Related scripts ── */
+fetch("/api/scripts").then(r=>r.json()).then(d=>{
+  const all=d.scripts||[].filter(s=>s.id!==SCRIPT_ID);
+  const gameName=${safeJsonForHtml(script.gameName||null)};
+  const ownerSub=${safeJsonForHtml(script.ownerSub||null)};
+  const related=gameName?all.filter(s=>s.gameName===gameName&&s.id!==SCRIPT_ID).slice(0,3):[];
+  const creator=all.filter(s=>s.ownerSub===ownerSub&&s.id!==SCRIPT_ID&&ownerSub).slice(0,3);
+  function miniCard(s){
+    const img=s.placeId?'<img class="mini-img" src="/api/roblox-thumbnail?placeId='+encodeURIComponent(s.placeId)+'" loading="lazy" alt="'+esc(s.title)+'" onerror="this.outerHTML=\'<div class=\\"mini-img-ph\\">⌗</div>\'"/>':'<div class="mini-img-ph">⌗</div>';
+    return '<a class="mini-card" href="/scripts/'+encodeURIComponent(s.id)+'">'+img+'<div class="mini-body"><div class="mini-title">'+esc(s.title)+'</div><div class="mini-meta">'+Number(s.views||0)+' views'+(s.rating?.average?' · ★ '+Number(s.rating.average).toFixed(1):'')+'</div></div></a>';
+  }
+  if(related.length){document.getElementById("relatedSection").style.display="block";document.getElementById("relatedTitle").textContent="More for "+gameName;document.getElementById("relatedGrid").innerHTML=related.map(miniCard).join("");}
+  if(creator.length){document.getElementById("creatorSection").style.display="block";document.getElementById("creatorGrid").innerHTML=creator.map(miniCard).join("");}
+}).catch(()=>{});
+
+/* ── Copy count endpoint ── */
+fetch("/api/scripts/"+SCRIPT_ID+"/copies",{credentials:"same-origin"}).then(r=>r.json()).then(d=>{document.getElementById("statCopies").textContent=Number(d.count||0).toLocaleString();}).catch(()=>{});
+
 loadRatings();loadComments();
 </script>
 </body>
 </html>`;
+}
+
+
 }
 
 export function buildEditHtml(script) {
@@ -894,6 +1281,7 @@ export async function prepareScriptForPage(env, id) {
     script.views = await getViews(env, id);
     return script;
 }
+
 
 
 
