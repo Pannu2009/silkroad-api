@@ -1,7 +1,8 @@
 // comments.js — All comment and rating logic
 // Imported by index.js and scripts.js
 
-import { sanitizeText, parseCookies } from "./scripts.js";
+import { sanitizeText, parseCookies } from "./utils.js";
+import { getRatingSummary, updateRating } from "./ratings.js";
 
 const MAX_COMMENT_LENGTH = 400;
 const MAX_USERNAME_LENGTH = 40;
@@ -34,40 +35,6 @@ async function rateLimit(request, env, name, limit, windowSeconds) {
     if (count >= limit) return false;
     await env.SCRIPTS_KV.put(key, String(count + 1), { expirationTtl: windowSeconds + 30 });
     return true;
-}
-
-// ─── Ratings ─────────────────────────────────────────────────────────────────
-// Per-user ratings: { [userSub]: { rating: 1-5, updatedAt } }
-// "Works" = gave 4 or 5 stars
-
-export async function getRatingSummary(env, id, sessionSub = null) {
-    const raw = await env.SCRIPTS_KV.get(`ratings:${id}`);
-    let ratings = {};
-    try { ratings = raw ? JSON.parse(raw) : {}; } catch {}
-    let total = 0, sum = 0;
-    const dist = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
-    for (const v of Object.values(ratings)) {
-        const r = Number(v?.rating);
-        if (Number.isInteger(r) && r >= 1 && r <= 5) { dist[r]++; total++; sum += r; }
-    }
-    const worksCount = (dist[4] || 0) + (dist[5] || 0);
-    return {
-        total,
-        average: total ? Math.round((sum / total) * 10) / 10 : 0,
-        distribution: dist,
-        worksPercent: total ? Math.round((worksCount / total) * 100) : 0,
-        myRating: sessionSub && ratings[sessionSub] ? Number(ratings[sessionSub].rating) : 0,
-    };
-}
-
-export async function updateRating(env, id, sessionSub, rating) {
-    const key = `ratings:${id}`;
-    const raw = await env.SCRIPTS_KV.get(key);
-    let ratings = {};
-    try { ratings = raw ? JSON.parse(raw) : {}; } catch {}
-    ratings[sessionSub] = { rating, updatedAt: Date.now() };
-    await env.SCRIPTS_KV.put(key, JSON.stringify(ratings));
-    return getRatingSummary(env, id, sessionSub);
 }
 
 // ─── Comments API ─────────────────────────────────────────────────────────────
@@ -184,5 +151,28 @@ export async function handleCommentsApi(request, env, path) {
     }
 
     return jsonResponse({ error: "Not found" }, 404);
+}
+
+
+
+// Shared comment helpers used by the script/admin modules.
+export async function getComments(env, id) {
+    const raw = await env.SCRIPTS_KV.get(`comments:${id}`);
+    let comments = [];
+    try { comments = raw ? JSON.parse(raw) : []; } catch {}
+    return Array.isArray(comments) ? comments.sort((a,b) => Number(b.createdAt) - Number(a.createdAt)) : [];
+}
+
+export async function deleteComment(env, id, commentId) {
+    const comments = await getComments(env, id);
+    const next = comments.filter(c => String(c.id) !== String(commentId));
+    if (next.length === comments.length) return false;
+    await env.SCRIPTS_KV.put(`comments:${id}`, JSON.stringify(next.slice(-200)));
+    return true;
+}
+
+export async function deleteComments(env, id) {
+    await env.SCRIPTS_KV.delete(`comments:${id}`);
+    return true;
 }
 
