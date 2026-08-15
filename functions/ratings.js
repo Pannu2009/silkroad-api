@@ -123,3 +123,4 @@ export async function handleRatingApi(request, env, id, method, rateLimitFn) {
 
     return jsonResponse(await updateRating(env, id, session.sub, rating));
 }
+
