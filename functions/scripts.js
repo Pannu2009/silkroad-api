@@ -1227,8 +1227,6 @@ loadRatings();loadComments();
 }
 
 
-}
-
 export function buildEditHtml(script) {
     return `<!DOCTYPE html>
 <html lang="en">
