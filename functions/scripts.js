@@ -4,6 +4,7 @@ import { getRatingSummary, updateRating, handleRatingApi, deleteRatings } from "
 import { handleCommentsApi, getComments, deleteComment, deleteComments } from "./comments.js";
 import { getLikeSummary, getLikeCount, getCopyCount, handleLikesApi } from "./likes.js";
 import { getProfile, getOrCreateProfile } from "./profiles.js";
+import { sanitizeText } from "./utils.js";
 
 const MAX_CODE_LENGTH = 20000;
 const MAX_TITLE_LENGTH = 120;
@@ -14,11 +15,6 @@ const MAX_COMMENT_LENGTH = 400;
 const MAX_TAGS = 10;
 
 const SCRIPTS_INDEX_KEY = "scripts:index";
-
-function sanitizeText(value, maxLen) {
-    if (typeof value !== "string") return "";
-    return value.trim().slice(0, maxLen);
-}
 
 function escapeHtml(str) {
     return String(str ?? "").replace(/[&<>"']/g, (c) => ({
@@ -1279,6 +1275,7 @@ export async function prepareScriptForPage(env, id) {
     script.views = await getViews(env, id);
     return script;
 }
+
 
 
 
