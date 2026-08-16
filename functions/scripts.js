@@ -759,8 +759,6 @@ fetch("/api/scripts").then(r=>{if(!r.ok)throw new Error();return r.json();}).the
 </body>
 </html>`;
 
-
-
 export function buildDetailHtml(script, thumbnailUrl, profile, likes) {
     const safeTitle  = escapeHtml(script.title);
     const safeDesc   = escapeHtml(script.description || "No description provided.");
@@ -1224,10 +1222,11 @@ loadRatings();loadComments();
 
 
 export function buildEditHtml(script) {
+    const _canon = "https://dakait.online/scripts/" + script.id + "/edit";
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
-${SHARED_HEAD("Edit Script — dakait.online", "Edit your script on Silk Road Script Hub.", `https://dakait.online/scripts/${script.id}/edit`)}
+${SHARED_HEAD("Edit Script — dakait.online", "Edit your script on Silk Road Script Hub.", _canon)}
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600;700&display=swap"/>
 <meta name="robots" content="noindex"/>
 <style>
