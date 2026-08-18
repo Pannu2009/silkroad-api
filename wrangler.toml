@@ -2,13 +2,11 @@ name = "silkroad-api"
 main = "functions/index.js"
 compatibility_date = "2026-06-08"
 compatibility_flags = [ "nodejs_compat" ]
-# -- version 1.8.0 ~ 
-# -- Update Name = Big Profile changes
+# version 1.9.0 — D1 wired, gallery fixed, comments fixed
 
-# ── All secrets are stored in Cloudflare dashboard ──────────────────────────
-# Workers & Pages → silkroad-api → Settings → Variables and Secrets
-# Secrets: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, DISCORD_WEBHOOK_URL,
-#          DISCORD_PUBLIC_KEY, ADMIN_EMAILS, DELETE_KEY
+# Secrets in Cloudflare dashboard (Workers → Settings → Variables & Secrets):
+# GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, DISCORD_WEBHOOK_URL,
+# DISCORD_PUBLIC_KEY, ADMIN_EMAILS, DELETE_KEY
 
 [[kv_namespaces]]
 binding = "SILK_ROAD_KV"
@@ -21,3 +19,8 @@ id = "a9525ec5ad3847ac940b4a79a2f4b9e2"
 [[kv_namespaces]]
 binding = "SESSIONS_KV"
 id = "4d492226f43b419993d14731d5dc0534"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "silk-road"
+database_id = "3f542ecf-84ff-43cf-a1d0-290f6de17d28"
