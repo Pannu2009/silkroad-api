@@ -18,9 +18,30 @@ async function getSession(request, env) {
     try { return JSON.parse(raw); } catch { return null; }
 }
 
+async function rateLimit(request, env, name, limit, windowSeconds) {
+    if (!env.SCRIPTS_KV) return true;
+    const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+    const bucket = Math.floor(Date.now() / (windowSeconds * 1000));
+    const key = `rate:${name}:${ip}:${bucket}`;
+    const raw = await env.SCRIPTS_KV.get(key);
+    const count = raw ? Number(raw) : 0;
+    if (count >= limit) return false;
+    await env.SCRIPTS_KV.put(key, String(count + 1), { expirationTtl: windowSeconds + 30 });
+    return true;
+}
+
 // ─── Likes ────────────────────────────────────────────────────────────────────
 
 export async function getLikeCount(env, scriptId) {
+    let total = 0, cursor;
+    try {
+        do {
+            const result = await env.SCRIPTS_KV.list({ prefix: `like:${scriptId}:`, ...(cursor ? { cursor } : {}) });
+            total += (result.keys || []).length;
+            cursor = result.list_complete ? undefined : result.cursor;
+        } while (cursor);
+        if (total > 0) return total;
+    } catch {}
     const raw = await env.SCRIPTS_KV.get(`likecount:${scriptId}`);
     return raw ? Number(raw) : 0;
 }
@@ -41,15 +62,9 @@ export async function getLikeSummary(env, scriptId, sub = null) {
 
 async function toggleLikeInner(env, scriptId, sub) {
     const liked = await hasLiked(env, scriptId, sub);
-    const countRaw = await env.SCRIPTS_KV.get(`likecount:${scriptId}`);
-    let count = countRaw ? Number(countRaw) : 0;
-    if (liked) {
-        await env.SCRIPTS_KV.delete(`like:${scriptId}:${sub}`);
-        count = Math.max(0, count - 1);
-    } else {
-        await env.SCRIPTS_KV.put(`like:${scriptId}:${sub}`, "1");
-        count = count + 1;
-    }
+    if (liked) await env.SCRIPTS_KV.delete(`like:${scriptId}:${sub}`);
+    else await env.SCRIPTS_KV.put(`like:${scriptId}:${sub}`, "1");
+    const count = await getLikeCount(env, scriptId);
     await env.SCRIPTS_KV.put(`likecount:${scriptId}`, String(count));
     return { liked: !liked, count };
 }
@@ -94,6 +109,25 @@ export async function recordCopy(env, scriptId) {
     const count = (raw ? Number(raw) : 0) + 1;
     await env.SCRIPTS_KV.put(key, String(count));
     return count;
+}
+
+
+export async function deleteScriptEngagementData(env, scriptId) {
+    const prefixes = [
+        `like:${scriptId}:`,
+        `report:${scriptId}:`
+    ];
+    for (const prefix of prefixes) {
+        let cursor;
+        do {
+            const result = await env.SCRIPTS_KV.list({ prefix, ...(cursor ? { cursor } : {}) });
+            const names = (result.keys || []).map(k => k.name);
+            await Promise.all(names.map(name => env.SCRIPTS_KV.delete(name)));
+            cursor = result.list_complete ? undefined : result.cursor;
+        } while (cursor);
+    }
+    await env.SCRIPTS_KV.delete(`likecount:${scriptId}`);
+    await env.SCRIPTS_KV.delete(`copies:${scriptId}`);
 }
 
 export async function getCopyCount(env, scriptId) {
@@ -154,6 +188,7 @@ export async function handleLikesApi(request, env, path) {
     // POST /api/scripts/:id/likes — toggle
     if (likeMatch && method === "POST") {
         if (!session?.sub) return jsonResponse({ error: "Sign in to like scripts" }, 401);
+        if (!(await rateLimit(request, env, "like", 30, 600))) return jsonResponse({ error: "Too many like requests. Try again later." }, 429);
         return jsonResponse(await toggleLikeInner(env, id, session.sub));
     }
 
@@ -165,11 +200,13 @@ export async function handleLikesApi(request, env, path) {
     // POST /api/scripts/:id/favorites — toggle
     if (favMatch && method === "POST") {
         if (!session?.sub) return jsonResponse({ error: "Sign in to save favorites" }, 401);
+        if (!(await rateLimit(request, env, "favorite", 30, 600))) return jsonResponse({ error: "Too many save requests. Try again later." }, 429);
         return jsonResponse(await toggleFavoriteInner(env, id, session.sub));
     }
 
     // POST /api/scripts/:id/copy — record a copy event (no auth needed)
     if (copyMatch && method === "POST") {
+        if (!(await rateLimit(request, env, "copy", 60, 600))) return jsonResponse({ error: "Too many copy events. Try again later." }, 429);
         const count = await recordCopy(env, id);
         // Check rewards for script owner
         try {
@@ -188,6 +225,7 @@ export async function handleLikesApi(request, env, path) {
     // POST /api/scripts/:id/report
     if (reportMatch && method === "POST") {
         if (!session?.sub) return jsonResponse({ error: "Sign in to report scripts" }, 401);
+        if (!(await rateLimit(request, env, "report", 10, 600))) return jsonResponse({ error: "Too many reports. Try again later." }, 429);
         let body = {};
         try { body = await request.json(); } catch {}
         return jsonResponse(await reportScript(env, id, session.sub, body.reason || "other"));
@@ -195,6 +233,7 @@ export async function handleLikesApi(request, env, path) {
 
     return jsonResponse({ error: "Not found" }, 404);
 }
+
 
 
 
