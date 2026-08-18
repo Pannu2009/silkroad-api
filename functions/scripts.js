@@ -205,13 +205,13 @@ async function getD1ScriptRecords(env) {
 }
 
 // ─── Gallery – now D1 first, fallback to KV ────────────────────────────────
-// Added skipCache parameter to prevent stale index from being re-saved on delete
+// Added options: skipCache and useD1
 
-async function getGalleryScripts(env, sessionSub = null, skipCache = false) {
-    // Try D1 first for speed and scalability
+async function getGalleryScripts(env, sessionSub = null, options = { skipCache: false, useD1: true }) {
+    const { skipCache, useD1 } = options;
     let records = [];
     let usedD1 = false;
-    if (env.DB) {
+    if (env.DB && useD1) {
         try {
             const result = await env.DB.prepare(
                 `SELECT id, title, description, username, owner_sub, place_id, game_name, 
@@ -240,7 +240,7 @@ async function getGalleryScripts(env, sessionSub = null, skipCache = false) {
         }
     }
 
-    // If D1 failed or returned nothing, fallback to KV (existing logic)
+    // If D1 failed or was skipped, fallback to KV (or if D1 returned nothing)
     if (!usedD1 || records.length === 0) {
         const byId = new Map();
         try {
@@ -248,7 +248,8 @@ async function getGalleryScripts(env, sessionSub = null, skipCache = false) {
             for (const script of kvRecords) if (script?.id) byId.set(String(script.id), script);
         } catch {}
 
-        // Only use the cached index if skipCache is false
+        // Only use the cached index if skipCache is false AND we are not explicitly skipping D1
+        // (the cache is a fallback, but we want to avoid it if we're forcing a clean rebuild)
         if (!skipCache) {
             try {
                 const cachedRaw = await env.SCRIPTS_KV.get(SCRIPTS_INDEX_KEY);
@@ -620,11 +621,20 @@ export async function handleScriptsApi(request, env, path) {
             env.SCRIPTS_KV.delete(`views:${id}`),
             deleteScriptEngagementData(env, id)
         ]);
-        if (env.DB) { try { await env.DB.prepare("DELETE FROM scripts WHERE id=?").bind(id).run(); } catch {} }
 
-        // ─── FIX: Force refresh cache to remove deleted script ──────────────
+        // Delete from D1 with error logging
+        if (env.DB) {
+            try {
+                const result = await env.DB.prepare("DELETE FROM scripts WHERE id=?").bind(id).run();
+                console.log(`D1 delete result for ${id}:`, result);
+            } catch (e) {
+                console.error("D1 delete failed:", e);
+            }
+        }
+
+        // ─── FIX: Force rebuild cache from KV only (skip D1) ──────────────
         await env.SCRIPTS_KV.delete(SCRIPTS_INDEX_KEY);
-        const freshScripts = await getGalleryScripts(env, null, true);
+        const freshScripts = await getGalleryScripts(env, null, { skipCache: true, useD1: false });
         await saveScriptIndexCache(env, freshScripts);
 
         return jsonResponse({ deleted: id });
