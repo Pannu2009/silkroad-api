@@ -2,7 +2,7 @@
 
 import { getRatingSummary, updateRating, handleRatingApi, deleteRatings } from "./ratings.js";
 import { handleCommentsApi, getComments, deleteComment, deleteComments } from "./comments.js";
-import { getLikeSummary, getLikeCount, getCopyCount, handleLikesApi } from "./likes.js";
+import { getLikeSummary, getLikeCount, getCopyCount, handleLikesApi, deleteScriptEngagementData } from "./likes.js";
 import { getProfile, getOrCreateProfile } from "./profiles.js";
 import { sanitizeText } from "./utils.js";
 
@@ -176,9 +176,49 @@ function toSummary(script, rating) {
     };
 }
 
+async function getD1ScriptRecords(env) {
+    if (!env.DB) return [];
+    try {
+        const result = await env.DB.prepare(
+            `SELECT id,title,description,username,owner_sub,place_id,game_name,hub_name,tags,keysystem,views,created_at,updated_at FROM scripts ORDER BY created_at DESC`
+        ).all();
+        return (result?.results || []).map(row => ({
+            id: row.id,
+            title: row.title,
+            description: row.description || "",
+            username: row.username || "anonymous",
+            ownerSub: row.owner_sub || null,
+            placeId: row.place_id || null,
+            gameName: row.game_name || null,
+            hubName: row.hub_name || "",
+            tags: (() => { try { return JSON.parse(row.tags || "[]"); } catch { return []; } })(),
+            keysystem: !!row.keysystem,
+            views: Number(row.views) || 0,
+            createdAt: Number(row.created_at) || 0,
+            updatedAt: Number(row.updated_at) || Number(row.created_at) || 0
+        }));
+    } catch {
+        return [];
+    }
+}
+
 async function getGalleryScripts(env, sessionSub = null) {
     let records = [];
-    try { records = await listAllScriptRecords(env); } catch { return []; }
+    try { records = await listAllScriptRecords(env); } catch {}
+
+    // Never turn a temporary KV listing problem into an empty gallery.
+    // Fall back to the compatibility index, then D1 if available.
+    if (!records.length) {
+        try {
+            const cached = await env.SCRIPTS_KV.get(SCRIPTS_INDEX_KEY);
+            if (cached) {
+                const parsed = JSON.parse(cached);
+                if (Array.isArray(parsed) && parsed.length) records = parsed;
+            }
+        } catch {}
+    }
+    if (!records.length) records = await getD1ScriptRecords(env);
+
     const noRating = { total:0, average:0, distribution:{1:0,2:0,3:0,4:0,5:0}, worksPercent:0, myRating:0 };
     const settled = await Promise.allSettled(records.map(async (script) => {
         let rating = noRating, views = Number(script.views) || 0;
@@ -416,14 +456,6 @@ export async function handleScriptsApi(request, env, path) {
         return jsonResponse({ script: record }, 201);
     }
 
-    // Admin-only diagnostic endpoint.
-    if (path === "/api/admin/debug" && method === "GET") {
-        const session = await getSession(request, env);
-        const isAdmin = !!(session?.email && isAdminEmail(env, session.email));
-        if (!isAdmin) return jsonResponse({ error: "Admin access required." }, 403);
-        return jsonResponse({ diagnosis: "Admin access confirmed", email: session.email, adminEmailsConfigured: !!(env.ADMIN_EMAILS || env.ADMIN_EMAIL) });
-    }
-
     const singleMatch = path.match(/^\/api\/scripts\/([a-zA-Z0-9-]+)$/);
 
     /* ───────────── Single script ───────────── */
@@ -512,7 +544,8 @@ export async function handleScriptsApi(request, env, path) {
             env.SCRIPTS_KV.delete(`script:${id}`),
             deleteComments(env, id),
             deleteRatings(env, id),
-            env.SCRIPTS_KV.delete(`views:${id}`)
+            env.SCRIPTS_KV.delete(`views:${id}`),
+            deleteScriptEngagementData(env, id)
         ]);
         if (env.DB) { try { await env.DB.prepare("DELETE FROM scripts WHERE id=?").bind(id).run(); } catch {} }
 
@@ -763,11 +796,18 @@ fetch("/api/me",{credentials:"same-origin",cache:"no-store"}).then(r=>r.json()).
 }).catch(()=>{});
 
 shimmer();
-fetch("/api/scripts").then(r=>{if(!r.ok)throw new Error();return r.json();}).then(d=>{
-  all=d.scripts||[];
+fetch("/api/scripts",{credentials:"same-origin",cache:"no-store"}).then(async r=>{
+  const d=await r.json().catch(()=>({}));
+  if(!r.ok) throw new Error(d.error||"Gallery API error");
+  return d;
+}).then(d=>{
+  all=Array.isArray(d.scripts)?d.scripts:[];
   readUrlParams();
   render();
-}).catch(()=>{grid.innerHTML='<div class="empty"><div class="empty-icon">⚠</div><p>Couldn\'t load scripts. Refresh and try again.</p></div>';});
+}).catch(err=>{
+  console.error("Dakait gallery failed:",err);
+  grid.innerHTML='<div class="empty"><div class="empty-icon">⚠</div><p>Couldn\'t load the gallery right now.</p><small style="opacity:.6">Refresh in a moment — your scripts are not deleted.</small></div>';
+});
 </script>
 </body>
 </html>`;
@@ -1084,13 +1124,19 @@ const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&
 const ago=ts=>{const s=Math.max(0,Math.floor((Date.now()-Number(ts||0))/1000));if(s<60)return"just now";if(s<3600)return Math.floor(s/60)+"m ago";if(s<86400)return Math.floor(s/3600)+"h ago";return Math.floor(s/86400)+"d ago";};
 
 /* ── Copy animations ── */
-function doCopy(code,mainBtn,codeBtn){
-  navigator.clipboard.writeText(code).then(()=>{
-    [mainBtn,codeBtn].forEach(b=>{if(!b)return;b.classList.add("done");const orig=b.textContent;b.textContent=b===mainBtn?"✓ Copied!":"Copied";setTimeout(()=>{b.classList.remove("done");b.textContent=orig;},1500);});
-    // Record copy for rewards
-    fetch("/api/scripts/"+SCRIPT_ID+"/copy",{method:"POST",credentials:"same-origin"}).catch(()=>{});
-    document.getElementById("statCopies").textContent="+1 (counting)";
-  }).catch(()=>{if(mainBtn)mainBtn.textContent="Select & copy";});
+async function doCopy(code,mainBtn,codeBtn){
+  let copied=false;
+  try{
+    if(navigator.clipboard?.writeText){await navigator.clipboard.writeText(code);copied=true;}
+  }catch{}
+  if(!copied){
+    try{
+      const ta=document.createElement("textarea");ta.value=code;ta.setAttribute("readonly","");ta.style.position="fixed";ta.style.left="-9999px";document.body.appendChild(ta);ta.select();copied=document.execCommand("copy");ta.remove();
+    }catch{}
+  }
+  if(!copied){if(mainBtn)mainBtn.textContent="Copy failed";setTimeout(()=>{if(mainBtn)mainBtn.textContent="⧉ Copy Script";},1500);return;}
+  [mainBtn,codeBtn].forEach(b=>{if(!b)return;b.classList.add("done");const orig=b.textContent;b.textContent=b===mainBtn?"✓ Copied!":"Copied";setTimeout(()=>{b.classList.remove("done");b.textContent=orig;},1500);});
+  fetch("/api/scripts/"+SCRIPT_ID+"/copy",{method:"POST",credentials:"same-origin"}).then(r=>r.json()).then(d=>{if(d.copies!=null)document.getElementById("statCopies").textContent=Number(d.copies).toLocaleString();}).catch(()=>{});
 }
 document.getElementById("copyMainBtn").onclick=()=>doCopy(RAW_CODE,document.getElementById("copyMainBtn"),document.getElementById("copyCodeBtn"));
 document.getElementById("copyCodeBtn").onclick=()=>doCopy(RAW_CODE,document.getElementById("copyMainBtn"),document.getElementById("copyCodeBtn"));
@@ -1126,8 +1172,17 @@ function updateLikeBtn(){const b=document.getElementById("likeBtn");b.innerHTML=
 document.getElementById("likeBtn").onclick=async()=>{
   await authP;
   if(!me.loggedIn){location.href="/auth/login?return="+encodeURIComponent(location.pathname);return;}
-  liked=!liked;likeCount+=liked?1:-1;updateLikeBtn();document.getElementById("statLikes").textContent=likeCount;
-  fetch("/api/scripts/"+SCRIPT_ID+"/likes",{method:"POST",credentials:"same-origin"}).then(r=>r.json()).then(d=>{liked=!!d.liked;likeCount=Number(d.count||0);updateLikeBtn();document.getElementById("statLikes").textContent=likeCount;}).catch(()=>{liked=!liked;likeCount+=liked?1:-1;updateLikeBtn();});
+  const previous={liked,likeCount};
+  liked=!liked;likeCount=Math.max(0,likeCount+(liked?1:-1));updateLikeBtn();document.getElementById("statLikes").textContent=likeCount;
+  try{
+    const r=await fetch("/api/scripts/"+SCRIPT_ID+"/likes",{method:"POST",credentials:"same-origin"});
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok) throw new Error(d.error||"Like failed");
+    liked=!!d.liked;likeCount=Number(d.count||0);updateLikeBtn();document.getElementById("statLikes").textContent=likeCount;
+  }catch(err){
+    liked=previous.liked;likeCount=previous.likeCount;updateLikeBtn();document.getElementById("statLikes").textContent=likeCount;
+    if(err.message) console.warn(err.message);
+  }
 };
 
 /* ── Favorites ── */
@@ -1137,8 +1192,13 @@ function updateFavBtn(){const b=document.getElementById("favBtn");b.textContent=
 document.getElementById("favBtn").onclick=async()=>{
   await authP;
   if(!me.loggedIn){location.href="/auth/login?return="+encodeURIComponent(location.pathname);return;}
-  saved=!saved;updateFavBtn();
-  fetch("/api/scripts/"+SCRIPT_ID+"/favorites",{method:"POST",credentials:"same-origin"}).then(r=>r.json()).then(d=>{saved=!!d.favorited;updateFavBtn();}).catch(()=>{saved=!saved;updateFavBtn();});
+  const previous=saved; saved=!saved;updateFavBtn();
+  try{
+    const r=await fetch("/api/scripts/"+SCRIPT_ID+"/favorites",{method:"POST",credentials:"same-origin"});
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok) throw new Error(d.error||"Save failed");
+    saved=!!d.favorited;updateFavBtn();
+  }catch(err){saved=previous;updateFavBtn();if(err.message)console.warn(err.message);}
 };
 
 /* ── Report ── */
@@ -1149,8 +1209,12 @@ reportDrop.querySelectorAll(".report-option").forEach(b=>b.onclick=async()=>{
   await authP;
   if(!me.loggedIn){location.href="/auth/login?return="+encodeURIComponent(location.pathname);return;}
   reportDrop.classList.remove("open");
-  await fetch("/api/scripts/"+SCRIPT_ID+"/report",{method:"POST",headers:{"Content-Type":"application/json"},credentials:"same-origin",body:JSON.stringify({reason:b.dataset.reason})}).catch(()=>{});
-  reportToggle.textContent="✓";reportToggle.title="Reported — thank you.";setTimeout(()=>{reportToggle.textContent="⚑";reportToggle.title="Report this script";},2500);
+  try{
+    const r=await fetch("/api/scripts/"+SCRIPT_ID+"/report",{method:"POST",headers:{"Content-Type":"application/json"},credentials:"same-origin",body:JSON.stringify({reason:b.dataset.reason})});
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok) throw new Error(d.error||"Report failed");
+    reportToggle.textContent="✓";reportToggle.title="Reported — thank you.";setTimeout(()=>{reportToggle.textContent="⚑";reportToggle.title="Report this script";},2500);
+  }catch(err){reportToggle.textContent="!";reportToggle.title=err.message||"Report failed";setTimeout(()=>{reportToggle.textContent="⚑";reportToggle.title="Report this script";},2500);}
 });
 
 /* ── Copies stat ── */
@@ -1170,13 +1234,13 @@ function renderRatings(d){
   if(total&&d.worksPercent>0)wt.innerHTML='<div class="works-tag">✓ '+d.worksPercent+'% gave 5 stars — community says it works</div>';
   if(d.myRating)document.getElementById("cfNote").textContent="Your rating: "+d.myRating+"/5. Submit again to update it.";
 }
-async function loadRatings(){try{const r=await fetch("/api/scripts/"+SCRIPT_ID+"/ratings",{credentials:"same-origin"});renderRatings(await r.json());}catch{document.getElementById("rscoreNum").textContent="—";}}
+async function loadRatings(){try{const r=await fetch("/api/scripts/"+SCRIPT_ID+"/ratings",{credentials:"same-origin",cache:"no-store"});const d=await r.json();if(!r.ok)throw new Error(d.error||"Ratings unavailable");renderRatings(d);}catch(err){console.warn("Ratings load failed",err);document.getElementById("rscoreNum").textContent="—";document.getElementById("rscoreCount").textContent="Ratings unavailable";}}
 
 /* ── Comments ── */
 async function loadComments(){
   const cl=document.getElementById("commentsList");
   try{
-    const r=await fetch("/api/scripts/"+SCRIPT_ID+"/comments");const d=await r.json();const list=d.comments||[];
+    const r=await fetch("/api/scripts/"+SCRIPT_ID+"/comments",{credentials:"same-origin",cache:"no-store"});const d=await r.json();if(!r.ok)throw new Error(d.error||"Comments unavailable");const list=Array.isArray(d.comments)?d.comments:[];
     if(!list.length){cl.innerHTML='<p class="no-comments">No reviews yet — be the first.</p>';return;}
     cl.innerHTML=list.map(c=>'<div class="comment"><div class="cmeta"><b>@'+esc(c.author||"anonymous")+'</b> · '+ago(c.createdAt)+(c.rating?'<span class="cstars"> '+"★".repeat(c.rating)+"☆".repeat(5-c.rating)+'</span>':'')+'</div>'+(c.text?'<div class="ctext">'+esc(c.text)+'</div>':'')+'</div>').join("");
   }catch{cl.innerHTML='<p class="no-comments">Couldn\'t load comments.</p>';}
@@ -1289,6 +1353,7 @@ export async function prepareScriptForPage(env, id) {
     script.views = await getViews(env, id);
     return script;
 }
+
 
 
 
