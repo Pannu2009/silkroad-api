@@ -205,8 +205,9 @@ async function getD1ScriptRecords(env) {
 }
 
 // ─── Gallery – now D1 first, fallback to KV ────────────────────────────────
+// Added skipCache parameter to prevent stale index from being re-saved on delete
 
-async function getGalleryScripts(env, sessionSub = null) {
+async function getGalleryScripts(env, sessionSub = null, skipCache = false) {
     // Try D1 first for speed and scalability
     let records = [];
     let usedD1 = false;
@@ -247,17 +248,20 @@ async function getGalleryScripts(env, sessionSub = null) {
             for (const script of kvRecords) if (script?.id) byId.set(String(script.id), script);
         } catch {}
 
-        try {
-            const cachedRaw = await env.SCRIPTS_KV.get(SCRIPTS_INDEX_KEY);
-            if (cachedRaw) {
-                const cached = JSON.parse(cachedRaw);
-                if (Array.isArray(cached)) {
-                    for (const script of cached) {
-                        if (script?.id && !byId.has(String(script.id))) byId.set(String(script.id), script);
+        // Only use the cached index if skipCache is false
+        if (!skipCache) {
+            try {
+                const cachedRaw = await env.SCRIPTS_KV.get(SCRIPTS_INDEX_KEY);
+                if (cachedRaw) {
+                    const cached = JSON.parse(cachedRaw);
+                    if (Array.isArray(cached)) {
+                        for (const script of cached) {
+                            if (script?.id && !byId.has(String(script.id))) byId.set(String(script.id), script);
+                        }
                     }
                 }
-            }
-        } catch {}
+            } catch {}
+        }
 
         records = [...byId.values()];
     }
@@ -618,7 +622,11 @@ export async function handleScriptsApi(request, env, path) {
         ]);
         if (env.DB) { try { await env.DB.prepare("DELETE FROM scripts WHERE id=?").bind(id).run(); } catch {} }
 
-        await saveScriptIndexCache(env, await getGalleryScripts(env));
+        // ─── FIX: Force refresh cache to remove deleted script ──────────────
+        await env.SCRIPTS_KV.delete(SCRIPTS_INDEX_KEY);
+        const freshScripts = await getGalleryScripts(env, null, true);
+        await saveScriptIndexCache(env, freshScripts);
+
         return jsonResponse({ deleted: id });
     }
 
@@ -881,10 +889,6 @@ fetch("/api/scripts",{credentials:"same-origin",cache:"no-store"}).then(async r=
 </body>
 </html>`;
 
-// The rest of the HTML building functions (buildDetailHtml, buildEditHtml) remain unchanged.
-// For brevity, I've omitted them here, but they are the same as in your original file.
-// Please keep your existing buildDetailHtml and buildEditHtml functions unchanged.
-
 export function buildDetailHtml(script, thumbnailUrl, profile, likes) {
     const safeTitle  = escapeHtml(script.title);
     const safeDesc   = escapeHtml(script.description || "No description provided.");
@@ -926,7 +930,6 @@ export function buildDetailHtml(script, thumbnailUrl, profile, likes) {
         publisher: { "@type": "Organization", name: "Silk Road Script Hub", url: "https://dakait.online" }
     });
 
-    // Breadcrumb JSON-LD
     const breadcrumbLd = safeJsonForHtml({
         "@context": "https://schema.org",
         "@type": "BreadcrumbList",
