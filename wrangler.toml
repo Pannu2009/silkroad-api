@@ -3,7 +3,7 @@ main = "functions/index.js"
 compatibility_date = "2026-06-08"
 compatibility_flags = [ "nodejs_compat" ]
 # version 1.9.0 — D1 wired, gallery fixed, comments fixed
-#update no v1.0
+#update no v2.0
 # fixed — gallery render JavaScript crash caused by nested quote escaping
 # fixed — script detail JavaScript crash caused by the comments error string
 # patched — copy, like, save, report and comments handlers now execute again because the detail script parses
