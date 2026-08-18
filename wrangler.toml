@@ -3,10 +3,18 @@ main = "functions/index.js"
 compatibility_date = "2026-06-08"
 compatibility_flags = [ "nodejs_compat" ]
 # version 1.9.0 — D1 wired, gallery fixed, comments fixed
+#update no v1.0
+# fixed — gallery render JavaScript crash caused by nested quote escaping
+# fixed — script detail JavaScript crash caused by the comments error string
+# patched — copy, like, save, report and comments handlers now execute again because the detail script parses
+# patched — homepage dust canvas visibility and particle animation
+# under work — deeper KV/D1 reliability and engagement consistency improvements
+# left — Discord upload webhook and Roblox thumbnail lookup intentionally remain enabled
+# left — Cloudflare SilkRoadEmail binding is managed in the dashboard and is not removed here
 
 # Secrets in Cloudflare dashboard (Workers → Settings → Variables & Secrets):
 # GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, DISCORD_WEBHOOK_URL,
-# DISCORD_PUBLIC_KEY, ADMIN_EMAILS, DELETE_KEY
+# DISCORD_PUBLIC_KEY, ADMIN_EMAILS
 
 [[kv_namespaces]]
 binding = "SILK_ROAD_KV"

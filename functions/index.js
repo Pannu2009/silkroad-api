@@ -96,7 +96,7 @@ ${SHARED_HEAD("Silk Road Script Hub — Free Roblox Scripts | dakait.online","Br
 :root{--ink:#0d0f14;--sand:#d4a574;--parchment:#e8dcc8;--vermilion:#c1502e;--green:#5fbf7a}
 *{box-sizing:border-box;margin:0;padding:0}html{scroll-behavior:smooth}
 body{background:var(--ink);background-image:radial-gradient(ellipse at 20% 0%,rgba(212,165,116,.08),transparent 60%),radial-gradient(ellipse at 80% 30%,rgba(193,80,46,.06),transparent 60%);color:var(--parchment);font-family:'JetBrains Mono',monospace;min-height:100vh;padding:8vh 6vw 6vh;display:flex;justify-content:center}
-.manifest{max-width:760px;width:100%;position:relative;z-index:1}
+.manifest{position:relative;z-index:2;max-width:760px;width:100%;position:relative;z-index:1}
 .route-line{display:flex;align-items:center;gap:10px;margin-bottom:2.2rem;color:var(--sand);font-size:.72rem;letter-spacing:.18em;text-transform:uppercase;opacity:.75}
 .route-line::before,.route-line::after{content:"";flex:1;height:1px;background:linear-gradient(90deg,transparent,var(--sand),transparent);opacity:.4}
 h1{font-family:'Fraunces',serif;font-weight:600;font-size:clamp(2.6rem,7vw,4.4rem);line-height:1.02;letter-spacing:-.01em}h1 em{font-style:italic;color:var(--sand)}
@@ -135,7 +135,7 @@ a{color:var(--sand)}
 @keyframes fadeUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
 .load-in{opacity:0;animation:fadeUp .9s cubic-bezier(.16,1,.3,1) forwards}.load-in.d1{animation-delay:.05s}.load-in.d2{animation-delay:.2s}.load-in.d3{animation-delay:.35s}.load-in.d4{animation-delay:.5s}
 .reveal{opacity:0;transform:translateY(18px);transition:opacity .8s cubic-bezier(.16,1,.3,1),transform .8s cubic-bezier(.16,1,.3,1)}.reveal.in-view{opacity:1;transform:translateY(0)}
-#dust{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:0;opacity:.72;display:block}
+#dust{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:1;opacity:.82;display:block}
 @media(prefers-reduced-motion:reduce){.dot,.track-dot{animation-duration:8s}html{scroll-behavior:auto}.load-in,.reveal{animation:none !important;opacity:1 !important;transform:none !important}#dust{opacity:.55}}
 </style></head>
 <body>
@@ -198,7 +198,7 @@ a{color:var(--sand)}
     const reducedMotion=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     let w,h,base=[],burst=[],scrollY=0,lastSY=0,bb=0;
     function resize(){w=canvas.width=window.innerWidth;h=canvas.height=window.innerHeight;}
-    function makeBase(){const n=Math.min(reducedMotion?42:90,Math.floor(w/18));base=Array.from({length:n},()=>({x:Math.random()*w,y:Math.random()*h,r:Math.random()*(reducedMotion?1.4:2.0)+.45,sx:(Math.random()-.5)*(reducedMotion?.06:.12),sy:Math.random()*(reducedMotion?.045:.09)+.018,a:Math.random()*.35+.12}));}
+    function makeBase(){const n=Math.min(reducedMotion?55:140,Math.max(55,Math.floor(w/11)));base=Array.from({length:n},()=>({x:Math.random()*w,y:Math.random()*h,r:Math.random()*(reducedMotion?1.4:2.0)+.45,sx:(Math.random()-.5)*(reducedMotion?.06:.12),sy:Math.random()*(reducedMotion?.07:.12)+.025,a:Math.random()*.5+.2}));}
     function spawnBurst(n){if(reducedMotion)return;for(let i=0;i<n;i++)burst.push({x:Math.random()*w,y:Math.random()*h*.7+h*.15,r:Math.random()*2+.4,sx:(Math.random()-.5)*.55,sy:(Math.random()-.5)*.4-.1,a:Math.random()*.5+.18,life:1,decay:Math.random()*.017+.007});}
     function tick(){ctx.clearRect(0,0,w,h);
       const vel=Math.abs(scrollY-lastSY);lastSY=scrollY;bb+=vel;

@@ -764,7 +764,7 @@ function render(){
   grid.innerHTML="";
   list.forEach((s,i)=>{
     const a=document.createElement("a");a.href="/scripts/"+encodeURIComponent(s.id);a.className="card";a.style.animationDelay=(i*38)+"ms";
-    const img=s.placeId?'<img class="card-img" src="/api/roblox-thumbnail?placeId='+encodeURIComponent(s.placeId)+'" loading="lazy" alt="'+esc(s.title)+'" onerror="this.outerHTML=\'<div class=\\"card-img-ph\\">⌗</div>\'"/>':'<div class="card-img-ph">⌗</div>';
+    const img=s.placeId?'<img class="card-img" src="/api/roblox-thumbnail?placeId='+encodeURIComponent(s.placeId)+'" loading="lazy" alt="'+esc(s.title)+'" onerror="this.remove()"/>':'<div class="card-img-ph">⌗</div>';
     const r=s.rating||{};const avg=Number(r.average||0);const wp=Number(r.worksPercent||0);
     const ratingText=r.total?("★ "+avg.toFixed(1)+" · "+r.total):"No ratings";
     const worksText=r.total?("✓ "+wp+"% works"):"";
@@ -837,7 +837,7 @@ fetch("/api/scripts",{credentials:"same-origin",cache:"no-store"}).then(async r=
   render();
 }).catch(err=>{
   console.error("Dakait gallery failed:",err);
-  grid.innerHTML='<div class="empty"><div class="empty-icon">⚠</div><p>Couldn\'t load the gallery right now.</p><small style="opacity:.6">Refresh in a moment — your scripts are not deleted.</small></div>';
+  grid.innerHTML='<div class="empty"><div class="empty-icon">⚠</div><p>Could not load the gallery right now.</p><small style="opacity:.6">Refresh in a moment — your scripts are not deleted.</small></div>';
 });
 </script>
 </body>
@@ -1191,7 +1191,7 @@ document.getElementById("deleteBtn").onclick=async()=>{
   const r=await fetch("/api/scripts/"+encodeURIComponent(SCRIPT_ID),{method:"DELETE",credentials:"same-origin"});
   const d=await r.json().catch(()=>({}));
   if(r.ok){location.href="/scripts";}
-  else{btn.disabled=false;btn.textContent="Delete";alert(d.error||"Couldn't delete. "+JSON.stringify(d.details||{}));}
+  else{btn.disabled=false;btn.textContent="Delete";alert(d.error||"Could not delete. "+JSON.stringify(d.details||{}));}
 };
 
 function showActionMessage(message){
@@ -1288,7 +1288,7 @@ async function loadComments(){
     const r=await fetch("/api/scripts/"+SCRIPT_ID+"/comments",{credentials:"same-origin",cache:"no-store"});const d=await r.json();if(!r.ok)throw new Error(d.error||"Comments unavailable");const list=Array.isArray(d.comments)?d.comments:[];
     if(!list.length){cl.innerHTML='<p class="no-comments">No reviews yet — be the first.</p>';return;}
     cl.innerHTML=list.map(c=>'<div class="comment"><div class="cmeta"><b>@'+esc(c.author||"anonymous")+'</b> · '+ago(c.createdAt)+(c.rating?'<span class="cstars"> '+"★".repeat(c.rating)+"☆".repeat(5-c.rating)+'</span>':'')+'</div>'+(c.text?'<div class="ctext">'+esc(c.text)+'</div>':'')+'</div>').join("");
-  }catch{cl.innerHTML='<p class="no-comments">Couldn\'t load comments.</p>';}
+  }catch{cl.innerHTML='<p class="no-comments">Could not load comments.</p>';}
 }
 
 /* ── Star picker ── */
@@ -1313,10 +1313,10 @@ document.getElementById("cfSubmit").onclick=async()=>{
   try{
     const r=await fetch("/api/scripts/"+SCRIPT_ID+"/comments",{method:"POST",headers:{"Content-Type":"application/json"},credentials:"same-origin",body:JSON.stringify({text,rating:selectedStar||null,author:document.getElementById("cfName").value.trim()})});
     const d=await r.json().catch(()=>({}));
-    if(!r.ok)throw new Error(d.error||"Couldn't post");
+    if(!r.ok)throw new Error(d.error||"Could not post");
     document.getElementById("cfText").value="";document.getElementById("cfName").value="";selectStar(0);note.textContent=d.rating?"Review posted with rating!":"Comment posted.";
     await Promise.all([loadComments(),loadRatings()]);
-  }catch(err){note.textContent=err.message||"Couldn't post. Try again.";}
+  }catch(err){note.textContent=err.message||"Could not post. Try again.";}
   finally{btn.disabled=false;btn.textContent="Post review";}
 };
 
@@ -1328,7 +1328,7 @@ fetch("/api/scripts").then(r=>r.json()).then(d=>{
   const related=gameName?all.filter(s=>s.gameName===gameName&&s.id!==SCRIPT_ID).slice(0,3):[];
   const creator=all.filter(s=>s.ownerSub===ownerSub&&s.id!==SCRIPT_ID&&ownerSub).slice(0,3);
   function miniCard(s){
-    const img=s.placeId?'<img class="mini-img" src="/api/roblox-thumbnail?placeId='+encodeURIComponent(s.placeId)+'" loading="lazy" alt="'+esc(s.title)+'" onerror="this.outerHTML=\'<div class=\\"mini-img-ph\\">⌗</div>\'"/>':'<div class="mini-img-ph">⌗</div>';
+    const img=s.placeId?'<img class="mini-img" src="/api/roblox-thumbnail?placeId='+encodeURIComponent(s.placeId)+'" loading="lazy" alt="'+esc(s.title)+'" onerror="this.remove()"/>':'<div class="mini-img-ph">⌗</div>';
     return '<a class="mini-card" href="/scripts/'+encodeURIComponent(s.id)+'">'+img+'<div class="mini-body"><div class="mini-title">'+esc(s.title)+'</div><div class="mini-meta">'+Number(s.views||0)+' views'+(s.rating?.average?' · ★ '+Number(s.rating.average).toFixed(1):'')+'</div></div></a>';
   }
   if(related.length){document.getElementById("relatedSection").style.display="block";document.getElementById("relatedTitle").textContent="More for "+gameName;document.getElementById("relatedGrid").innerHTML=related.map(miniCard).join("");}
