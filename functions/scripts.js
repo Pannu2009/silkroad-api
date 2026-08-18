@@ -177,17 +177,24 @@ function toSummary(script, rating) {
 }
 
 async function getGalleryScripts(env, sessionSub = null) {
-    const records = await listAllScriptRecords(env);
-    const summaries = await Promise.all(records.map(async (script) => {
-        const [rating, views] = await Promise.all([
-            getRatingSummary(env, script.id, sessionSub),
-            getViews(env, script.id)
-        ]);
-        const summary = toSummary(script, rating);
-        summary.views = views || summary.views || 0;
-        return summary;
+    let records = [];
+    try { records = await listAllScriptRecords(env); } catch { return []; }
+    const noRating = { total:0, average:0, distribution:{1:0,2:0,3:0,4:0,5:0}, worksPercent:0, myRating:0 };
+    const settled = await Promise.allSettled(records.map(async (script) => {
+        let rating = noRating, views = Number(script.views) || 0;
+        try {
+            const [rR, vR] = await Promise.allSettled([
+                getRatingSummary(env, script.id, sessionSub),
+                getViews(env, script.id)
+            ]);
+            if (rR.status === "fulfilled") rating = rR.value;
+            if (vR.status === "fulfilled") views  = vR.value;
+        } catch {}
+        const s = toSummary(script, rating);
+        s.views = views;
+        return s;
     }));
-    return summaries.sort((a, b) => b.createdAt - a.createdAt);
+    return settled.filter(r=>r.status==="fulfilled").map(r=>r.value).sort((a,b)=>b.createdAt-a.createdAt);
 }
 
 async function getScriptIndex(env) {
@@ -388,6 +395,11 @@ export async function handleScriptsApi(request, env, path) {
 
         await env.SCRIPTS_KV.put(`script:${id}`, JSON.stringify(record));
 
+        // D1 dual-write — best-effort; KV is source of truth for legacy data
+        if (env.DB) { try { await env.DB.prepare(
+            `INSERT OR REPLACE INTO scripts (id,title,description,username,owner_sub,place_id,game_name,hub_name,tags,keysystem,views,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,0,?,?)`
+        ).bind(id,title,description||"",username,record.ownerSub||null,placeId||null,gameName||null,hubName||"",JSON.stringify(tags),keysystem?1:0,createdAt,createdAt).run(); } catch {} }
+
         // Refresh the compatibility index from source-of-truth records.
         const scripts = await getGalleryScripts(env);
         await saveScriptIndexCache(env, scripts);
@@ -502,6 +514,7 @@ export async function handleScriptsApi(request, env, path) {
             deleteRatings(env, id),
             env.SCRIPTS_KV.delete(`views:${id}`)
         ]);
+        if (env.DB) { try { await env.DB.prepare("DELETE FROM scripts WHERE id=?").bind(id).run(); } catch {} }
 
         await saveScriptIndexCache(env, await getGalleryScripts(env));
         return jsonResponse({ deleted: id });
@@ -519,7 +532,7 @@ export async function handleScriptsApi(request, env, path) {
     /* ───────────── Comments / Ratings delegated modules ───────────── */
     const commentsMatch = path.match(/^\/api\/scripts\/([a-zA-Z0-9-]+)\/comments$/);
     if (commentsMatch) {
-        return handleCommentsApi(request, env, commentsMatch[1], method, rateLimit, updateRating);
+        return handleCommentsApi(request, env, path); // FIX: full path, not UUID
     }
 
     const ratingsMatch = path.match(/^\/api\/scripts\/([a-zA-Z0-9-]+)\/ratings$/);
@@ -758,6 +771,8 @@ fetch("/api/scripts").then(r=>{if(!r.ok)throw new Error();return r.json();}).the
 </script>
 </body>
 </html>`;
+
+
 
 export function buildDetailHtml(script, thumbnailUrl, profile, likes) {
     const safeTitle  = escapeHtml(script.title);
@@ -1222,11 +1237,11 @@ loadRatings();loadComments();
 
 
 export function buildEditHtml(script) {
-    const _canon = "https://dakait.online/scripts/" + script.id + "/edit";
+    const _eu = "https://dakait.online/scripts/" + script.id + "/edit";
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
-${SHARED_HEAD("Edit Script — dakait.online", "Edit your script on Silk Road Script Hub.", _canon)}
+${SHARED_HEAD("Edit Script — dakait.online", "Edit your script on Silk Road Script Hub.", _eu)}
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600;700&display=swap"/>
 <meta name="robots" content="noindex"/>
 <style>
@@ -1274,6 +1289,7 @@ export async function prepareScriptForPage(env, id) {
     script.views = await getViews(env, id);
     return script;
 }
+
 
 
 
