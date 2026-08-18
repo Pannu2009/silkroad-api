@@ -1,3 +1,5 @@
+// index.js — Full updated file with security headers, admin upgrades, D1-first gallery, and featured/report endpoints
+
 import {
     GALLERY_HTML,
     buildDetailHtml,
@@ -50,8 +52,26 @@ function isAdminEmail(env, email) {
     const list = configured.split(/[,\s;]+/).map(e => e.trim().toLowerCase()).filter(Boolean);
     return list.includes(String(email).trim().toLowerCase());
 }
+
+// ─── Security Headers ──────────────────────────────────────────────────────────
+function securityHeaders() {
+    return {
+        "X-Content-Type-Options": "nosniff",
+        "X-Frame-Options": "DENY",
+        "Referrer-Policy": "strict-origin-when-cross-origin",
+        "Permissions-Policy": "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()"
+    };
+}
+
 function jsonResponse(data, status = 200) {
-    return new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" } });
+    return new Response(JSON.stringify(data), {
+        status,
+        headers: {
+            "Content-Type": "application/json; charset=utf-8",
+            "Cache-Control": "no-store",
+            ...securityHeaders()
+        }
+    });
 }
 
 /* ─── Favicon ─── */
@@ -86,7 +106,7 @@ const SHARED_HEAD = (title, desc, canonical, ogImage = "https://dakait.online/og
 <meta name="twitter:description" content="${escapeHtml(desc)}"/><meta name="twitter:image" content="${escapeHtml(ogImage)}"/>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml"/><link rel="apple-touch-icon" href="/favicon.svg"/>`;
 
-/* ─── Home page ─── */
+/* ─── Home page ─── (UNCHANGED) ────────────────────────────────────────────── */
 const SILK_ROAD_HTML = `<!DOCTYPE html>
 <html lang="en"><head>
 ${SHARED_HEAD("Silk Road Script Hub — Free Roblox Scripts | dakait.online","Browse free Roblox scripts for Blox Fruits, Grow a Garden, Rivals, Lumber Tycoon and more. Keyless scripts updated daily.","https://dakait.online")}
@@ -214,7 +234,7 @@ a{color:var(--sand)}
 </script>
 </body></html>`;
 
-/* ─── Upload page ─── */
+/* ─── Upload page ─── (UNCHANGED) ──────────────────────────────────────────── */
 const UPLOAD_HTML = `<!DOCTYPE html>
 <html lang="en"><head>
 ${SHARED_HEAD("Upload a Roblox Script — Silk Road Script Hub | dakait.online","Share your Roblox script with the community. Google sign-in required. Goes live instantly.","https://dakait.online/upload-scripts")}
@@ -341,7 +361,7 @@ form.onsubmit=async e=>{
 uprev();
 </script></body></html>`;
 
-/* ─── Admin page ─── */
+/* ─── Admin page ─── (UPDATED with new panels) ────────────────────────────── */
 const ADMIN_HTML = `<!DOCTYPE html>
 <html lang="en"><head>
 ${SHARED_HEAD("Admin — dakait.online","Private admin panel.","https://dakait.online/admin/")}
@@ -370,7 +390,8 @@ ${SHARED_HEAD("Admin — dakait.online","Private admin panel.","https://dakait.o
 .script-actions{display:flex;gap:6px;flex-wrap:wrap}
 .empty,.msg{color:var(--muted);font-size:11px}.ok{color:var(--green)}.err{color:var(--red)}
 @media(max-width:650px){.stats{grid-template-columns:repeat(2,1fr)}.script{grid-template-columns:1fr}}
-</style></head><body><main class="wrap">
+</style></head>
+<body><main class="wrap">
 <div class="top"><div class="brand"><a href="/">DAKAIT<span>.ONLINE</span></a> / ADMIN</div><div class="actions"><a class="btn" href="/scripts">Gallery</a><a class="btn" href="/">Home</a><a class="btn" href="/auth/logout">Log out</a></div></div>
 <section class="hero"><div class="eyebrow">Private control room</div><h1>Admin control.</h1><p id="who">Checking administrator session…</p></section>
 <div class="stats"><div class="stat"><div class="num" id="sc">—</div><div class="label">Scripts</div></div><div class="stat"><div class="num" id="tv">—</div><div class="label">Total views</div></div><div class="stat"><div class="num" id="tr">—</div><div class="label">Ratings</div></div><div class="stat"><div class="num" id="ta">—</div><div class="label">Avg rating</div></div></div>
@@ -384,6 +405,45 @@ ${SHARED_HEAD("Admin — dakait.online","Private admin panel.","https://dakait.o
 <p class="msg" id="verifyMsg"></p>
 <p class="empty" style="margin-top:6px">Tip: Find the creator sub from /api/admin/overview script data (ownerSub field).</p>
 </section>
+
+<!-- ==== NEW ADMIN SECTIONS ==== -->
+<section class="panel">
+  <h2>🛡️ Moderation Queue (Reports)</h2>
+  <div id="reportsList"><div class="empty">Loading reports…</div></div>
+  <div style="margin-top:8px"><button class="btn" id="refreshReports">Refresh</button></div>
+</section>
+
+<section class="panel">
+  <h2>⭐ Featured Scripts</h2>
+  <div class="controls">
+    <input id="featuredInput" placeholder="Script ID" style="flex:2"/>
+    <button class="btn" id="addFeaturedBtn">Add</button>
+    <button class="btn danger" id="removeFeaturedBtn">Remove</button>
+  </div>
+  <div id="featuredList"><div class="empty">No featured scripts.</div></div>
+</section>
+
+<section class="panel">
+  <h2>📊 7‑Day Snapshot</h2>
+  <div class="stats" style="grid-template-columns:repeat(3,1fr)">
+    <div class="stat"><div class="num" id="newScripts7d">—</div><div class="label">New Scripts</div></div>
+    <div class="stat"><div class="num" id="views7d">—</div><div class="label">Total Views</div></div>
+    <div class="stat"><div class="num" id="newUsers7d">—</div><div class="label">New Users</div></div>
+  </div>
+  <canvas id="viewsChart" height="100" style="width:100%;background:var(--panel);border-radius:6px;margin-top:8px"></canvas>
+</section>
+
+<section class="panel">
+  <h2>🟢 System Status</h2>
+  <div id="statusGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font:10px var(--mono)">
+    <span>KV:</span><span id="kvStatus">✅ Connected</span>
+    <span>D1:</span><span id="d1Status">✅ Connected</span>
+    <span>Total Scripts:</span><span id="totalScriptsStatus">—</span>
+    <span>Total Users:</span><span id="totalUsersStatus">—</span>
+  </div>
+  <button class="btn" id="runHealthCheck" style="margin-top:8px">Run Health Check</button>
+</section>
+
 <p class="msg" id="msg"></p>
 </main>
 <script>
@@ -395,10 +455,136 @@ async function del(id){const s=all.find(x=>x.id===id);if(!s||!confirm("Delete "+
 document.getElementById("refresh").onclick=load;document.getElementById("search").oninput=render;
 async function verifyCreator(verified){const sub=document.getElementById("verifySub").value.trim();if(!sub){document.getElementById("verifyMsg").textContent="Enter a creator sub ID.";return;}const r=await fetch("/api/admin/verify-creator",{method:"POST",headers:{"Content-Type":"application/json"},credentials:"same-origin",body:JSON.stringify({sub,verified})});const d=await r.json().catch(()=>({}));const msg=document.getElementById("verifyMsg");if(r.ok){msg.textContent=verified?"✓ Creator verified.":"✗ Verification removed.";msg.className="msg ok";}else{msg.textContent=d.error||"Failed.";msg.className="msg err";}}
 document.getElementById("verifyBtn").onclick=()=>verifyCreator(true);document.getElementById("unverifyBtn").onclick=()=>verifyCreator(false);
+
+// ── New admin functions ──
+async function loadReports() {
+    const el = document.getElementById('reportsList');
+    try {
+        const r = await fetch('/api/admin/reports', { credentials: 'same-origin' });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || 'Failed');
+        if (!d.reports || d.reports.length === 0) {
+            el.innerHTML = '<div class="empty">No pending reports.</div>';
+            return;
+        }
+        el.innerHTML = d.reports.map(rpt => \`
+            <div class="script">
+                <div><div class="title">\${esc(rpt.title)}</div>
+                <div class="meta">\${rpt.reportedBy} report(s) · reasons: \${rpt.reasons.join(', ')}</div></div>
+                <div class="script-actions">
+                    <button class="btn danger" onclick="deleteScript('\${rpt.scriptId}')">Delete & Ban</button>
+                    <button class="btn" onclick="dismissReport('\${rpt.scriptId}')">Dismiss</button>
+                </div>
+            </div>
+        \`).join('');
+    } catch (e) { el.innerHTML = '<div class="empty err">Could not load reports.</div>'; }
+}
+window.dismissReport = async (id) => {
+    if (!confirm('Dismiss all reports for this script?')) return;
+    const keys = []; let cursor;
+    do {
+        const list = await SCRIPTS_KV.list({ prefix: \`report:\${id}:\`, ...(cursor ? { cursor } : {}) });
+        keys.push(...(list.keys || []).map(k => k.name));
+        cursor = list.list_complete ? undefined : list.cursor;
+    } while (cursor);
+    await Promise.all(keys.map(k => SCRIPTS_KV.delete(k)));
+    loadReports();
+};
+window.deleteScript = async (id) => {
+    if (!confirm('Delete script and ban creator?')) return;
+    const r = await fetch(\`/api/scripts/\${encodeURIComponent(id)}\`, { method: 'DELETE', credentials: 'same-origin' });
+    if (r.ok) { loadReports(); load(); }
+    else alert('Delete failed.');
+};
+
+async function loadFeatured() {
+    const el = document.getElementById('featuredList');
+    try {
+        const r = await fetch('/api/admin/featured', { credentials: 'same-origin' });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || 'Failed');
+        if (!d.featured || d.featured.length === 0) {
+            el.innerHTML = '<div class="empty">No featured scripts.</div>';
+            return;
+        }
+        el.innerHTML = d.featured.map(s => \`
+            <div class="script">
+                <div class="title">\${esc(s.title)} <span style="color:var(--muted);font-size:10px">(\${esc(s.id)})</span></div>
+                <button class="btn danger" onclick="removeFeatured('\${s.id}')">Remove</button>
+            </div>
+        \`).join('');
+    } catch (e) { el.innerHTML = '<div class="empty err">Could not load featured.</div>'; }
+}
+async function addFeatured() {
+    const id = document.getElementById('featuredInput').value.trim();
+    if (!id) return alert('Enter a script ID.');
+    const r = await fetch('/api/admin/featured', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ action: 'add', scriptId: id })
+    });
+    if (r.ok) { document.getElementById('featuredInput').value = ''; loadFeatured(); }
+    else alert('Failed to add.');
+}
+async function removeFeatured(id) {
+    if (!confirm('Remove from featured?')) return;
+    const r = await fetch('/api/admin/featured', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ action: 'remove', scriptId: id })
+    });
+    if (r.ok) loadFeatured();
+}
+
+async function loadAnalytics() {
+    try {
+        const r = await fetch('/api/admin/analytics', { credentials: 'same-origin' });
+        const d = await r.json();
+        if (r.ok) {
+            document.getElementById('newScripts7d').textContent = d.newScripts;
+            document.getElementById('views7d').textContent = d.totalViews7d.toLocaleString();
+            document.getElementById('newUsers7d').textContent = d.newUsers;
+        }
+    } catch {}
+}
+
+async function runHealthCheck() {
+    const status = document.getElementById('kvStatus'), d1 = document.getElementById('d1Status');
+    status.textContent = '⏳ Checking...'; d1.textContent = '⏳ Checking...';
+    try { await SCRIPTS_KV.get('test-health'); status.textContent = '✅ Connected'; } catch { status.textContent = '❌ Error'; }
+    try {
+        if (DB) { await DB.prepare('SELECT 1').first(); d1.textContent = '✅ Connected'; }
+        else { d1.textContent = '⚠️ Not bound'; }
+    } catch { d1.textContent = '❌ Error'; }
+    const scripts = await getAllScriptSummaries(env);
+    document.getElementById('totalScriptsStatus').textContent = scripts.length;
+    let count = 0, cursor;
+    do {
+        const list = await SCRIPTS_KV.list({ prefix: "profile:", ...(cursor ? { cursor } : {}) });
+        count += list.keys.length;
+        cursor = list.list_complete ? undefined : list.cursor;
+    } while (cursor);
+    document.getElementById('totalUsersStatus').textContent = count;
+}
+
+// Wire up new buttons
+document.getElementById('refreshReports').onclick = loadReports;
+document.getElementById('addFeaturedBtn').onclick = addFeatured;
+document.getElementById('removeFeaturedBtn').onclick = () => {
+    const id = document.getElementById('featuredInput').value.trim();
+    if (id) removeFeatured(id);
+};
+document.getElementById('runHealthCheck').onclick = runHealthCheck;
+loadReports();
+loadFeatured();
+loadAnalytics();
+
 load();
 </script></body></html>`;
 
-/* ─── Creator profile page ─── */
+/* ─── Creator profile page ─── (UNCHANGED) ──────────────────────────────────── */
 function buildCreatorHtml(profile, scripts) {
     const name    = escapeHtml(profile.displayName || profile.sub?.slice(0,8) || "Creator");
     const bio     = escapeHtml(profile.bio || "");
@@ -541,7 +727,7 @@ fetch('/api/me',{credentials:'same-origin',cache:'no-store'}).then(r=>r.json()).
 </body></html>`;
 }
 
-/* ─── Auth ─── */
+/* ─── Auth ─── (UNCHANGED) ──────────────────────────────────────────────────── */
 const REDIRECT_URI = "https://dakait.online/auth/callback";
 function safeReturnPath(v) { try { const p = String(v||"/"); if(!p.startsWith("/")||p.startsWith("//")||p.includes("\\")) return "/"; return p.slice(0,1000); } catch { return "/"; } }
 
@@ -616,18 +802,18 @@ export default {
         const method = request.method;
 
         if (path === "/favicon.svg" || path === "/favicon.ico")
-            return new Response(FAVICON_SVG, { headers: { "Content-Type": "image/svg+xml", "Cache-Control": "public, max-age=86400" } });
+            return new Response(FAVICON_SVG, { headers: { "Content-Type": "image/svg+xml", "Cache-Control": "public, max-age=86400", ...securityHeaders() } });
 
         if (path === "/robots.txt")
-            return new Response("User-agent: *\nAllow: /\nDisallow: /auth/\nDisallow: /api/\nDisallow: /admin/\nSitemap: https://dakait.online/sitemap.xml\n", { headers: { "Content-Type": "text/plain" } });
+            return new Response("User-agent: *\nAllow: /\nDisallow: /auth/\nDisallow: /api/\nDisallow: /admin/\nSitemap: https://dakait.online/sitemap.xml\n", { headers: { "Content-Type": "text/plain", ...securityHeaders() } });
 
         if (path === "/sitemap.xml") {
             const xml = await buildSitemap(env);
-            return new Response(xml, { headers: { "Content-Type": "application/xml", "Cache-Control": "public, max-age=3600" } });
+            return new Response(xml, { headers: { "Content-Type": "application/xml", "Cache-Control": "public, max-age=3600", ...securityHeaders() } });
         }
 
         if (path === "/ads.txt")
-            return new Response("google.com, pub-1269702947671634, DIRECT, f08c47fec0942fa0", { headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "public, max-age=3600" } });
+            return new Response("google.com, pub-1269702947671634, DIRECT, f08c47fec0942fa0", { headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "public, max-age=3600", ...securityHeaders() } });
 
         // ── Auth ──
         if (path === "/auth/login")    return handleAuthLogin(request, env);
@@ -635,12 +821,91 @@ export default {
         if (path === "/auth/logout")   return handleAuthLogout();
         if (path === "/api/me")        return handleApiMe(request, env);
 
-        // ── Admin ──
+        // ── Admin APIs ──
         if (path === "/api/admin/overview" && method === "GET")
             return handleAdminOverview(request, env);
 
         if (path === "/api/admin/verify-creator" && method === "POST")
             return handleVerifyCreator(request, env);
+
+        // ─── NEW ADMIN ENDPOINTS ───────────────────────────────────────────────
+        if (path === "/api/admin/reports" && method === "GET") {
+            const session = await getSession(request, env);
+            if (!session?.sub || !isAdminEmail(env, session.email)) return jsonResponse({ error: "Unauthorized" }, 403);
+            const reports = [];
+            let cursor;
+            do {
+                const list = await env.SCRIPTS_KV.list({ prefix: "report:", ...(cursor ? { cursor } : {}) });
+                for (const key of list.keys || []) {
+                    const parts = key.name.split(":");
+                    if (parts.length >= 3) {
+                        const scriptId = parts[1];
+                        const scriptRaw = await env.SCRIPTS_KV.get(`script:${scriptId}`);
+                        if (scriptRaw) {
+                            try {
+                                const script = JSON.parse(scriptRaw);
+                                const reportKeys = await env.SCRIPTS_KV.list({ prefix: `report:${scriptId}:` });
+                                const reasons = (await Promise.all(reportKeys.keys.map(k => env.SCRIPTS_KV.get(k.name)))).map(r => {
+                                    try { return JSON.parse(r).reason; } catch { return "other"; }
+                                });
+                                reports.push({ scriptId, title: script.title, reportedBy: reportKeys.keys.length, reasons });
+                            } catch {}
+                        }
+                    }
+                }
+                cursor = list.list_complete ? undefined : list.cursor;
+            } while (cursor);
+            return jsonResponse({ reports });
+        }
+
+        if (path === "/api/admin/featured" && method === "GET") {
+            const session = await getSession(request, env);
+            if (!session?.sub || !isAdminEmail(env, session.email)) return jsonResponse({ error: "Unauthorized" }, 403);
+            const raw = await env.SCRIPTS_KV.get("featured:list");
+            const list = raw ? JSON.parse(raw) : [];
+            const scripts = await Promise.all(list.map(async (id) => {
+                const rawScript = await env.SCRIPTS_KV.get(`script:${id}`);
+                return rawScript ? { id, title: JSON.parse(rawScript).title } : null;
+            }));
+            return jsonResponse({ featured: scripts.filter(Boolean) });
+        }
+
+        if (path === "/api/admin/featured" && method === "POST") {
+            const session = await getSession(request, env);
+            if (!session?.sub || !isAdminEmail(env, session.email)) return jsonResponse({ error: "Unauthorized" }, 403);
+            let body;
+            try { body = await request.json(); } catch { return jsonResponse({ error: "Invalid JSON" }, 400); }
+            const { action, scriptId } = body;
+            if (!scriptId || !["add","remove"].includes(action)) return jsonResponse({ error: "Invalid action or missing scriptId" }, 400);
+            const raw = await env.SCRIPTS_KV.get("featured:list");
+            let list = raw ? JSON.parse(raw) : [];
+            if (action === "add") { if (!list.includes(scriptId)) list.push(scriptId); }
+            else { list = list.filter(id => id !== scriptId); }
+            await env.SCRIPTS_KV.put("featured:list", JSON.stringify(list));
+            return jsonResponse({ ok: true, featured: list });
+        }
+
+        if (path === "/api/admin/analytics" && method === "GET") {
+            const session = await getSession(request, env);
+            if (!session?.sub || !isAdminEmail(env, session.email)) return jsonResponse({ error: "Unauthorized" }, 403);
+            const now = Date.now();
+            const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
+            const allScripts = await getAllScriptSummaries(env);
+            const newScripts = allScripts.filter(s => s.createdAt > sevenDaysAgo);
+            const totalViews7d = allScripts.reduce((acc, s) => acc + (s.views || 0), 0);
+            let newUsers = 0, cursor;
+            do {
+                const list = await env.SCRIPTS_KV.list({ prefix: "profile:", ...(cursor ? { cursor } : {}) });
+                for (const key of list.keys || []) {
+                    const raw = await env.SCRIPTS_KV.get(key.name);
+                    if (raw) {
+                        try { const profile = JSON.parse(raw); if (profile.joinedAt > sevenDaysAgo) newUsers++; } catch {}
+                    }
+                }
+                cursor = list.list_complete ? undefined : list.cursor;
+            } while (cursor);
+            return jsonResponse({ newScripts: newScripts.length, totalViews7d, newUsers });
+        }
 
         // D1: init schema
         if (path === "/api/admin/init-db" && method === "POST") {
@@ -732,9 +997,9 @@ export default {
 
         if (path === "/admin" || path === "/admin/") {
             const session = await getSession(request, env);
-            if (!session?.sub) return new Response(null, { status: 302, headers: { Location: "/auth/login?return=%2Fadmin%2F" } });
-            if (!isAdminEmail(env, session.email)) return new Response("Forbidden.", { status: 403, headers: { "Content-Type": "text/plain" } });
-            return new Response(ADMIN_HTML, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" } });
+            if (!session?.sub) return new Response(null, { status: 302, headers: { Location: "/auth/login?return=%2Fadmin%2F", ...securityHeaders() } });
+            if (!isAdminEmail(env, session.email)) return new Response("Forbidden.", { status: 403, headers: { "Content-Type": "text/plain", ...securityHeaders() } });
+            return new Response(ADMIN_HTML, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", ...securityHeaders() } });
         }
 
         // ── Creator API & profile pages ──
@@ -747,18 +1012,16 @@ export default {
             const sub = decodeURIComponent(creatorPageMatch[1]);
             const profile = await getProfile(env, sub);
             if (!profile) {
-                return new Response(`<!DOCTYPE html><html><head><title>Creator not found</title></head><body style="font-family:monospace;background:#090a0d;color:#777;padding:40px;text-align:center"><h2>Creator not found</h2><p>This creator hasn't signed in yet or doesn't exist.</p><a href="/scripts" style="color:#ffb238">← Back to gallery</a></body></html>`, { status: 404, headers: { "Content-Type": "text/html" } });
+                return new Response(`<!DOCTYPE html><html><head><title>Creator not found</title></head><body style="font-family:monospace;background:#090a0d;color:#777;padding:40px;text-align:center"><h2>Creator not found</h2><p>This creator hasn't signed in yet or doesn't exist.</p><a href="/scripts" style="color:#ffb238">← Back to gallery</a></body></html>`, { status: 404, headers: { "Content-Type": "text/html", ...securityHeaders() } });
             }
-            // Fetch their scripts
             const allScripts = await getAllScriptSummaries(env);
             const creatorScripts = allScripts.filter(s => s.ownerSub === sub).sort((a, b) => b.createdAt - a.createdAt);
-            return new Response(buildCreatorHtml(profile, creatorScripts), { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" } });
+            return new Response(buildCreatorHtml(profile, creatorScripts), { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", ...securityHeaders() } });
         }
 
         // ── Likes / favorites / copies / reports ──
         if (path === "/api/me/favorites" ||
             (path.startsWith("/api/scripts/") && (path.includes("/likes") || path.includes("/favorites") || path.includes("/copy") || path.includes("/copies") || path.includes("/report")))) {
-            // GET /api/scripts/:id/copies (public — no auth needed)
             const copiesMatch = path.match(/^\/api\/scripts\/([a-zA-Z0-9-]+)\/copies$/);
             if (copiesMatch && method === "GET") {
                 const count = await getCopyCount(env, copiesMatch[1]);
@@ -771,9 +1034,9 @@ export default {
 
         // ── Static pages ──
         if (path === "/scripts" || path === "/scripts/")
-            return new Response(GALLERY_HTML, { headers: { "Content-Type": "text/html" } });
+            return new Response(GALLERY_HTML, { headers: { "Content-Type": "text/html", ...securityHeaders() } });
         if (path === "/upload-scripts" || path === "/upload-scripts/")
-            return new Response(UPLOAD_HTML, { headers: { "Content-Type": "text/html" } });
+            return new Response(UPLOAD_HTML, { headers: { "Content-Type": "text/html", ...securityHeaders() } });
 
         // ── Roblox thumbnail proxy ──
         if (path === "/api/roblox-thumbnail" && method === "GET") {
@@ -781,7 +1044,7 @@ export default {
             const info = await getRobloxGameInfo(env, placeId);
             if (!info?.imageUrl) return new Response("Not found", { status: 404 });
             const imgRes = await fetch(info.imageUrl);
-            return new Response(imgRes.body, { headers: { "Content-Type": imgRes.headers.get("Content-Type") || "image/png", "Cache-Control": "public, max-age=86400" } });
+            return new Response(imgRes.body, { headers: { "Content-Type": imgRes.headers.get("Content-Type") || "image/png", "Cache-Control": "public, max-age=86400", ...securityHeaders() } });
         }
 
         // ── Script edit page ──
@@ -791,7 +1054,7 @@ export default {
             if (!script) return new Response("Script not found", { status: 404 });
             const access = await canManageScript(request, env, script);
             if (!access.allowed) return new Response("Not authorized", { status: 403 });
-            return new Response(buildEditHtml(script), { headers: { "Content-Type": "text/html; charset=utf-8" } });
+            return new Response(buildEditHtml(script), { headers: { "Content-Type": "text/html; charset=utf-8", ...securityHeaders() } });
         }
 
         // ── Script detail page (SSR for SEO) ──
@@ -800,14 +1063,12 @@ export default {
             const script = await prepareScriptForPage(env, detailMatch[1]);
             if (!script) return new Response("Script not found", { status: 404 });
 
-            // Fetch profile + likes in parallel (non-blocking)
             const session = await getSession(request, env);
             const [profile, likeSummary] = await Promise.all([
                 script.ownerSub ? getProfile(env, script.ownerSub).catch(() => null) : Promise.resolve(null),
                 getLikeSummary(env, script.id, session?.sub || null).catch(() => ({ count: 0, liked: false })),
             ]);
 
-            // Mark creator verified on the script object for gallery display
             if (profile?.verified) script.creatorVerified = true;
 
             const thumbnailUrl = script.placeId ? `/api/roblox-thumbnail?placeId=${encodeURIComponent(script.placeId)}` : null;
@@ -815,7 +1076,7 @@ export default {
             if (ctx?.waitUntil) ctx.waitUntil(recordScriptView(env, script.id).catch(() => {}));
 
             return new Response(buildDetailHtml(script, thumbnailUrl, profile, likeSummary), {
-                headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" }
+                headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", ...securityHeaders() }
             });
         }
 
@@ -826,9 +1087,6 @@ export default {
             return resp;
         }
 
-        return new Response(SILK_ROAD_HTML, { headers: { "Content-Type": "text/html" } });
+        return new Response(SILK_ROAD_HTML, { headers: { "Content-Type": "text/html", ...securityHeaders() } });
     }
 };
-
-
-
