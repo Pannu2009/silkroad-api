@@ -203,40 +203,67 @@ async function getD1ScriptRecords(env) {
 }
 
 async function getGalleryScripts(env, sessionSub = null) {
-    let records = [];
-    try { records = await listAllScriptRecords(env); } catch {}
+    // Build the gallery from every available source. KV is the source of truth
+    // for full script records, while D1 and the compact index are recovery
+    // sources. Never allow one transient source failure to turn a real gallery
+    // into an empty response.
+    const byId = new Map();
 
-    // Never turn a temporary KV listing problem into an empty gallery.
-    // Fall back to the compatibility index, then D1 if available.
-    if (!records.length) {
-        try {
-            const cached = await env.SCRIPTS_KV.get(SCRIPTS_INDEX_KEY);
-            if (cached) {
-                const parsed = JSON.parse(cached);
-                if (Array.isArray(parsed) && parsed.length) records = parsed;
+    try {
+        const kvRecords = await listAllScriptRecords(env);
+        for (const script of kvRecords) if (script?.id) byId.set(String(script.id), script);
+    } catch {}
+
+    try {
+        const d1Records = await getD1ScriptRecords(env);
+        for (const script of d1Records) {
+            if (script?.id && !byId.has(String(script.id))) byId.set(String(script.id), script);
+        }
+    } catch {}
+
+    try {
+        const cachedRaw = await env.SCRIPTS_KV.get(SCRIPTS_INDEX_KEY);
+        if (cachedRaw) {
+            const cached = JSON.parse(cachedRaw);
+            if (Array.isArray(cached)) {
+                for (const script of cached) {
+                    if (script?.id && !byId.has(String(script.id))) byId.set(String(script.id), script);
+                }
             }
-        } catch {}
-    }
-    if (!records.length) records = await getD1ScriptRecords(env);
+        }
+    } catch {}
 
-    const noRating = { total:0, average:0, distribution:{1:0,2:0,3:0,4:0,5:0}, worksPercent:0, myRating:0 };
+    const records = [...byId.values()];
+    const noRating = {
+        total: 0, average: 0,
+        distribution: {1:0,2:0,3:0,4:0,5:0},
+        worksPercent: 0, myRating: 0
+    };
+
     const settled = await Promise.allSettled(records.map(async (script) => {
-        let rating = noRating, views = Number(script.views) || 0;
-        try {
-            const [rR, vR] = await Promise.allSettled([
-                getRatingSummary(env, script.id, sessionSub),
-                getViews(env, script.id)
-            ]);
-            if (rR.status === "fulfilled") rating = rR.value;
-            if (vR.status === "fulfilled") views  = vR.value;
-        } catch {}
-        const s = toSummary(script, rating);
-        s.views = views;
-        return s;
-    }));
-    return settled.filter(r=>r.status==="fulfilled").map(r=>r.value).sort((a,b)=>b.createdAt-a.createdAt);
-}
+        let rating = noRating;
+        let views = Number(script.views) || 0;
 
+        const [ratingResult, viewResult] = await Promise.allSettled([
+            getRatingSummary(env, script.id, sessionSub),
+            getViews(env, script.id)
+        ]);
+
+        if (ratingResult.status === "fulfilled" && ratingResult.value) rating = ratingResult.value;
+        if (viewResult.status === "fulfilled" && Number.isFinite(Number(viewResult.value))) {
+            views = Number(viewResult.value);
+        }
+
+        const summary = toSummary(script, rating);
+        summary.views = views;
+        return summary;
+    }));
+
+    return settled
+        .filter(r => r.status === "fulfilled")
+        .map(r => r.value)
+        .sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0));
+}
 async function getScriptIndex(env) {
     const scripts = await getGalleryScripts(env);
     // Keep the old index as a cache/compatibility layer, but the gallery's
@@ -249,6 +276,10 @@ async function getScriptIndex(env) {
 }
 
 async function saveScriptIndexCache(env, scripts) {
+    // An empty result can be caused by transient KV/D1 failures. Never replace
+    // a known-good index with [] because that makes the next request lose the
+    // recovery source as well.
+    if (!Array.isArray(scripts) || scripts.length === 0) return;
     try { await env.SCRIPTS_KV.put(SCRIPTS_INDEX_KEY, JSON.stringify(scripts)); } catch {}
 }
 
@@ -372,7 +403,7 @@ export async function handleScriptsApi(request, env, path) {
         const session = await getSession(request, env);
         const scripts = await getGalleryScripts(env, session?.sub || null);
         await saveScriptIndexCache(env, scripts);
-        return jsonResponse({ scripts });
+        return jsonResponse({ scripts, count: scripts.length });
     }
 
     /* ───────────── Upload ───────────── */
@@ -700,7 +731,7 @@ const grid=document.getElementById("grid"),search=document.getElementById("searc
 let all=[],sort="latest",filter="all";
 
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const ago=ts=>{const s=Math.max(0,Math.floor((Date.now()-Number(ts||0))/1000));if(s<60)return"just now";if(s<3600)return Math.floor(s/60)+"m ago";if(s<86400)return Math.floor(s/3600)+"h ago";return Math.floor(s/86400)+"d ago";};
+const ago=ts=>{const s=Math.max(0,Math.floor((Date.now()-Number(ts||0))/1000));if(s<60)return"just now";if(s<3600)return Math.floor(s/60)+"m ago";if(s<86400)return Math.floor(s/3600)+"h ago";return Math.floor(s/86400)+"d ago";};\ndocument.addEventListener("error",e=>{const img=e.target;if(img&&img.matches&&img.matches(".creator-avatar")){const ph=document.createElement("span");ph.className="creator-avatar-ph";ph.textContent=img.dataset.fallback||"?";img.replaceWith(ph);}},true);
 
 // Trending score (Hacker News-style: views / (age_hours + 2)^1.5)
 function trendScore(s){
@@ -829,9 +860,10 @@ export function buildDetailHtml(script, thumbnailUrl, profile, likes) {
     const createdDate = new Date(script.createdAt).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
     const isVerified  = !!(profile?.verified);
     const verifiedBadge = isVerified ? `<span class="creator-verified">✓ Verified</span>` : "";
+    const avatarLetter = escapeHtml(script.username?.slice(0,1)?.toUpperCase() || "?");
     const creatorAvatar = profile?.picture
-        ? `<img class="creator-avatar" src="${escapeHtml(profile.picture)}" alt="${safeUser}" onerror="this.outerHTML='<span class=\\"creator-avatar-ph\\">'+${safeJsonForHtml(script.username?.slice(0,1)?.toUpperCase()||"?")}+'</span>'"/>`
-        : `<span class="creator-avatar-ph">${escapeHtml(script.username?.slice(0,1)?.toUpperCase() || "?")}</span>`;
+        ? `<img class="creator-avatar" src="${escapeHtml(profile.picture)}" alt="${safeUser}" data-fallback="${avatarLetter}"/>`
+        : `<span class="creator-avatar-ph">${avatarLetter}</span>`;
 
     const likeCount = likes?.count || 0;
     const thumbBg   = thumbnailUrl ? `style="background-image:url('${escapeHtml(thumbnailUrl)}')"` : "";
@@ -1162,7 +1194,20 @@ document.getElementById("deleteBtn").onclick=async()=>{
   else{btn.disabled=false;btn.textContent="Delete";alert(d.error||"Couldn't delete. "+JSON.stringify(d.details||{}));}
 };
 
+function showActionMessage(message){
+  let el=document.getElementById("actionMessage");
+  if(!el){
+    el=document.createElement("div");el.id="actionMessage";
+    el.style.cssText="margin-top:8px;font:12px var(--mono);color:var(--muted);min-height:18px";
+    const bar=document.querySelector(".action-bar"); if(bar) bar.after(el);
+  }
+  el.textContent=message||"";
+  clearTimeout(window.__dakaitActionTimer);
+  window.__dakaitActionTimer=setTimeout(()=>{el.textContent="";},3500);
+}
+
 /* ── Likes ── */
+
 let likeCount=${likeCount},liked=false;
 fetch("/api/scripts/"+SCRIPT_ID+"/likes",{credentials:"same-origin",cache:"no-store"}).then(r=>r.json()).then(d=>{
   liked=!!d.liked;likeCount=Number(d.count||0);updateLikeBtn();
@@ -1181,7 +1226,7 @@ document.getElementById("likeBtn").onclick=async()=>{
     liked=!!d.liked;likeCount=Number(d.count||0);updateLikeBtn();document.getElementById("statLikes").textContent=likeCount;
   }catch(err){
     liked=previous.liked;likeCount=previous.likeCount;updateLikeBtn();document.getElementById("statLikes").textContent=likeCount;
-    if(err.message) console.warn(err.message);
+    showActionMessage(err.message||"Like failed");
   }
 };
 
@@ -1198,7 +1243,7 @@ document.getElementById("favBtn").onclick=async()=>{
     const d=await r.json().catch(()=>({}));
     if(!r.ok) throw new Error(d.error||"Save failed");
     saved=!!d.favorited;updateFavBtn();
-  }catch(err){saved=previous;updateFavBtn();if(err.message)console.warn(err.message);}
+  }catch(err){saved=previous;updateFavBtn();showActionMessage(err.message||"Save failed");}
 };
 
 /* ── Report ── */
@@ -1214,7 +1259,7 @@ reportDrop.querySelectorAll(".report-option").forEach(b=>b.onclick=async()=>{
     const d=await r.json().catch(()=>({}));
     if(!r.ok) throw new Error(d.error||"Report failed");
     reportToggle.textContent="✓";reportToggle.title="Reported — thank you.";setTimeout(()=>{reportToggle.textContent="⚑";reportToggle.title="Report this script";},2500);
-  }catch(err){reportToggle.textContent="!";reportToggle.title=err.message||"Report failed";setTimeout(()=>{reportToggle.textContent="⚑";reportToggle.title="Report this script";},2500);}
+  }catch(err){reportToggle.textContent="!";reportToggle.title=err.message||"Report failed";showActionMessage(err.message||"Report failed");setTimeout(()=>{reportToggle.textContent="⚑";reportToggle.title="Report this script";},2500);}
 });
 
 /* ── Copies stat ── */

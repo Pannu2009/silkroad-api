@@ -29,21 +29,34 @@ async function rateLimit(request, env, name, limit, windowSeconds) {
     await env.SCRIPTS_KV.put(key, String(count + 1), { expirationTtl: windowSeconds + 30 });
     return true;
 }
+async function scriptExists(env, scriptId) {
+    try {
+        if (await env.SCRIPTS_KV.get(`script:${scriptId}`)) return true;
+    } catch {}
+    try {
+        if (env.DB) {
+            const row = await env.DB.prepare("SELECT id FROM scripts WHERE id=? LIMIT 1").bind(scriptId).first();
+            if (row?.id) return true;
+        }
+    } catch {}
+    return false;
+}
+
 
 // ─── Likes ────────────────────────────────────────────────────────────────────
 
 export async function getLikeCount(env, scriptId) {
-    let total = 0, cursor;
-    try {
-        do {
-            const result = await env.SCRIPTS_KV.list({ prefix: `like:${scriptId}:`, ...(cursor ? { cursor } : {}) });
-            total += (result.keys || []).length;
-            cursor = result.list_complete ? undefined : result.cursor;
-        } while (cursor);
-        if (total > 0) return total;
-    } catch {}
-    const raw = await env.SCRIPTS_KV.get(`likecount:${scriptId}`);
-    return raw ? Number(raw) : 0;
+    let count = 0;
+    let cursor;
+    do {
+        const result = await env.SCRIPTS_KV.list({
+            prefix: `like:${scriptId}:`,
+            ...(cursor ? { cursor } : {})
+        });
+        count += (result.keys || []).length;
+        cursor = result.list_complete ? undefined : result.cursor;
+    } while (cursor);
+    return count;
 }
 
 export async function hasLiked(env, scriptId, sub) {
@@ -175,8 +188,7 @@ export async function handleLikesApi(request, env, path) {
     if (!id) return jsonResponse({ error: "Not found" }, 404);
 
     // Check script exists
-    const scriptExists = await env.SCRIPTS_KV.get(`script:${id}`);
-    if (!scriptExists) return jsonResponse({ error: "Script not found" }, 404);
+    if (!(await scriptExists(env, id))) return jsonResponse({ error: "Script not found" }, 404);
 
     const session = await getSession(request, env);
 
@@ -207,7 +219,8 @@ export async function handleLikesApi(request, env, path) {
     // POST /api/scripts/:id/copy — record a copy event (no auth needed)
     if (copyMatch && method === "POST") {
         if (!(await rateLimit(request, env, "copy", 60, 600))) return jsonResponse({ error: "Too many copy events. Try again later." }, 429);
-        const count = await recordCopy(env, id);
+        let count = 0;
+        try { count = await recordCopy(env, id); } catch { count = await getCopyCount(env, id); }
         // Check rewards for script owner
         try {
             const scriptRaw = await env.SCRIPTS_KV.get(`script:${id}`);
