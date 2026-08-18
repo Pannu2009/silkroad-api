@@ -195,19 +195,16 @@ a{color:var(--sand)}
   document.querySelectorAll('.reveal').forEach(el=>obs.observe(el));
   if(!window.matchMedia('(prefers-reduced-motion: reduce)').matches){
     const canvas=document.getElementById('dust'),ctx=canvas.getContext('2d');
-    let w,h,base=[],burst=[],scrollY=0,lastSY=0,burstBucket=0;
+    let w,h,base=[],burst=[],scrollY=0,lastSY=0,bb=0;
     function resize(){w=canvas.width=window.innerWidth;h=canvas.height=window.innerHeight;}
     function makeBase(){const n=Math.min(55,Math.floor(w/24));base=Array.from({length:n},()=>({x:Math.random()*w,y:Math.random()*h,r:Math.random()*1.3+.25,sx:(Math.random()-.5)*.09,sy:Math.random()*.065+.012,a:Math.random()*.25+.05}));}
     function spawnBurst(n){for(let i=0;i<n;i++)burst.push({x:Math.random()*w,y:Math.random()*h*.7+h*.15,r:Math.random()*2+.4,sx:(Math.random()-.5)*.55,sy:(Math.random()-.5)*.4-.1,a:Math.random()*.5+.18,life:1,decay:Math.random()*.017+.007});}
-    function tick(){
-      ctx.clearRect(0,0,w,h);
-      const vel=Math.abs(scrollY-lastSY);lastSY=scrollY;
-      burstBucket+=vel;
-      if(burstBucket>85){spawnBurst(Math.min(7,Math.floor(burstBucket/13)));burstBucket=0;}
+    function tick(){ctx.clearRect(0,0,w,h);
+      const vel=Math.abs(scrollY-lastSY);lastSY=scrollY;bb+=vel;
+      if(bb>85){spawnBurst(Math.min(7,Math.floor(bb/13)));bb=0;}
       base.forEach(p=>{p.x+=p.sx;p.y+=p.sy;if(p.y>h){p.y=-4;p.x=Math.random()*w;}if(p.x>w)p.x=0;if(p.x<0)p.x=w;ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fillStyle='rgba(212,165,116,'+p.a+')';ctx.fill();});
       for(let i=burst.length-1;i>=0;i--){const p=burst[i];p.x+=p.sx;p.y+=p.sy;p.sx*=.96;p.sy*=.96;p.life-=p.decay;if(p.life<=0){burst.splice(i,1);continue;}ctx.beginPath();ctx.arc(p.x,p.y,p.r*p.life,0,Math.PI*2);ctx.fillStyle='rgba(212,165,116,'+(p.a*p.life)+')';ctx.fill();}
-      requestAnimationFrame(tick);
-    }
+      requestAnimationFrame(tick);}
     function pulse(){spawnBurst(14);setTimeout(pulse,55000+Math.random()*12000);}
     window.addEventListener('scroll',()=>{scrollY=window.scrollY;},{passive:true});
     resize();makeBase();tick();pulse();
@@ -643,6 +640,94 @@ export default {
 
         if (path === "/api/admin/verify-creator" && method === "POST")
             return handleVerifyCreator(request, env);
+
+        // D1: init schema
+        if (path === "/api/admin/init-db" && method === "POST") {
+            const session = await getSession(request, env);
+            if (!session?.sub || !isAdminEmail(env, session.email))
+                return jsonResponse({ error: "Admin only" }, 403);
+            if (!env.DB) return jsonResponse({ error: "D1 binding 'DB' not found in env" }, 500);
+            try {
+                await env.DB.batch([
+                    env.DB.prepare(`CREATE TABLE IF NOT EXISTS scripts (
+                        id TEXT PRIMARY KEY,
+                        title TEXT NOT NULL,
+                        description TEXT DEFAULT '',
+                        username TEXT DEFAULT 'anonymous',
+                        owner_sub TEXT,
+                        place_id TEXT,
+                        game_name TEXT,
+                        hub_name TEXT DEFAULT '',
+                        tags TEXT DEFAULT '[]',
+                        keysystem INTEGER DEFAULT 0,
+                        views INTEGER DEFAULT 0,
+                        created_at INTEGER NOT NULL,
+                        updated_at INTEGER NOT NULL,
+                        creator_verified INTEGER DEFAULT 0,
+                        code TEXT DEFAULT ''
+                    )`),
+                    env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_scripts_created ON scripts(created_at DESC)`),
+                    env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_scripts_owner ON scripts(owner_sub)`),
+                    env.DB.prepare(`CREATE INDEX IF NOT EXISTS idx_scripts_game ON scripts(game_name)`),
+                    env.DB.prepare(`CREATE TABLE IF NOT EXISTS script_ratings (
+                        script_id TEXT NOT NULL,
+                        user_sub TEXT NOT NULL,
+                        rating INTEGER NOT NULL,
+                        created_at INTEGER NOT NULL,
+                        PRIMARY KEY (script_id, user_sub)
+                    )`),
+                    env.DB.prepare(`CREATE TABLE IF NOT EXISTS script_likes (
+                        script_id TEXT NOT NULL,
+                        user_sub TEXT NOT NULL,
+                        created_at INTEGER NOT NULL,
+                        PRIMARY KEY (script_id, user_sub)
+                    )`),
+                    env.DB.prepare(`CREATE TABLE IF NOT EXISTS creator_profiles (
+                        sub TEXT PRIMARY KEY,
+                        display_name TEXT,
+                        bio TEXT DEFAULT '',
+                        roblox_username TEXT DEFAULT '',
+                        picture_url TEXT,
+                        verified INTEGER DEFAULT 0,
+                        badges TEXT DEFAULT '[]',
+                        reputation INTEGER DEFAULT 0,
+                        joined_at INTEGER NOT NULL
+                    )`),
+                ]);
+                return jsonResponse({ ok: true, message: "D1 schema initialised" });
+            } catch (e) {
+                return jsonResponse({ error: String(e) }, 500);
+            }
+        }
+
+        // D1: migrate existing KV scripts into D1
+        if (path === "/api/admin/migrate-to-d1" && method === "POST") {
+            const session = await getSession(request, env);
+            if (!session?.sub || !isAdminEmail(env, session.email))
+                return jsonResponse({ error: "Admin only" }, 403);
+            if (!env.DB) return jsonResponse({ error: "D1 not wired" }, 500);
+            const { getAllScriptSummaries: allSummaries, getScript: getScriptKv } = await import("./scripts.js");
+            const summaries = await allSummaries(env);
+            let migrated = 0, failed = 0;
+            for (const s of summaries) {
+                try {
+                    const full = await getScriptKv(env, s.id);
+                    if (!full) { failed++; continue; }
+                    await env.DB.prepare(
+                        `INSERT OR REPLACE INTO scripts (id,title,description,username,owner_sub,place_id,game_name,hub_name,tags,keysystem,views,created_at,updated_at,code)
+                         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+                    ).bind(
+                        full.id, full.title, full.description||"", full.username||"anonymous",
+                        full.ownerSub||null, full.placeId||null, full.gameName||null, full.hubName||"",
+                        JSON.stringify(full.tags||[]), full.keysystem?1:0,
+                        Number(full.views)||0, full.createdAt, full.updatedAt||full.createdAt,
+                        full.code||""
+                    ).run();
+                    migrated++;
+                } catch { failed++; }
+            }
+            return jsonResponse({ ok: true, migrated, failed });
+        }
 
         if (path === "/api/admin/debug" && method === "GET") {
             const session = await getSession(request, env);
