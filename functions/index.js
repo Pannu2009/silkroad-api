@@ -136,7 +136,7 @@ a{color:var(--sand)}
 .load-in{opacity:0;animation:fadeUp .9s cubic-bezier(.16,1,.3,1) forwards}.load-in.d1{animation-delay:.05s}.load-in.d2{animation-delay:.2s}.load-in.d3{animation-delay:.35s}.load-in.d4{animation-delay:.5s}
 .reveal{opacity:0;transform:translateY(18px);transition:opacity .8s cubic-bezier(.16,1,.3,1),transform .8s cubic-bezier(.16,1,.3,1)}.reveal.in-view{opacity:1;transform:translateY(0)}
 #dust{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:0;opacity:.5}
-@media(prefers-reduced-motion:reduce){.dot,.track-dot{animation:none}html{scroll-behavior:auto}.load-in,.reveal{animation:none !important;opacity:1 !important;transform:none !important}#dust{display:none}}
+@media(prefers-reduced-motion:reduce){.dot,.track-dot{animation-duration:8s}html{scroll-behavior:auto}.load-in,.reveal{animation:none !important;opacity:1 !important;transform:none !important}#dust{opacity:.32}}
 </style></head>
 <body>
 <canvas id="dust"></canvas>
@@ -193,19 +193,20 @@ a{color:var(--sand)}
   function toggleInfo(){const p=document.getElementById('infoPanel'),b=document.getElementById('infoToggle');const o=p.classList.toggle('open');b.querySelector('span').textContent=o?'Less detail':'More about this route';}
   const obs=new IntersectionObserver(es=>{es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('in-view');obs.unobserve(e.target);}});},{threshold:.15});
   document.querySelectorAll('.reveal').forEach(el=>obs.observe(el));
-  if(!window.matchMedia('(prefers-reduced-motion: reduce)').matches){
+  {
     const canvas=document.getElementById('dust'),ctx=canvas.getContext('2d');
+    const reducedMotion=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     let w,h,base=[],burst=[],scrollY=0,lastSY=0,bb=0;
     function resize(){w=canvas.width=window.innerWidth;h=canvas.height=window.innerHeight;}
-    function makeBase(){const n=Math.min(55,Math.floor(w/24));base=Array.from({length:n},()=>({x:Math.random()*w,y:Math.random()*h,r:Math.random()*1.3+.25,sx:(Math.random()-.5)*.09,sy:Math.random()*.065+.012,a:Math.random()*.25+.05}));}
-    function spawnBurst(n){for(let i=0;i<n;i++)burst.push({x:Math.random()*w,y:Math.random()*h*.7+h*.15,r:Math.random()*2+.4,sx:(Math.random()-.5)*.55,sy:(Math.random()-.5)*.4-.1,a:Math.random()*.5+.18,life:1,decay:Math.random()*.017+.007});}
+    function makeBase(){const n=Math.min(reducedMotion?28:55,Math.floor(w/24));base=Array.from({length:n},()=>({x:Math.random()*w,y:Math.random()*h,r:Math.random()*(reducedMotion?.9:1.3)+.25,sx:(Math.random()-.5)*(reducedMotion?.035:.09),sy:Math.random()*(reducedMotion?.025:.065)+.012,a:Math.random()*.25+.05}));}
+    function spawnBurst(n){if(reducedMotion)return;for(let i=0;i<n;i++)burst.push({x:Math.random()*w,y:Math.random()*h*.7+h*.15,r:Math.random()*2+.4,sx:(Math.random()-.5)*.55,sy:(Math.random()-.5)*.4-.1,a:Math.random()*.5+.18,life:1,decay:Math.random()*.017+.007});}
     function tick(){ctx.clearRect(0,0,w,h);
       const vel=Math.abs(scrollY-lastSY);lastSY=scrollY;bb+=vel;
       if(bb>85){spawnBurst(Math.min(7,Math.floor(bb/13)));bb=0;}
       base.forEach(p=>{p.x+=p.sx;p.y+=p.sy;if(p.y>h){p.y=-4;p.x=Math.random()*w;}if(p.x>w)p.x=0;if(p.x<0)p.x=w;ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fillStyle='rgba(212,165,116,'+p.a+')';ctx.fill();});
       for(let i=burst.length-1;i>=0;i--){const p=burst[i];p.x+=p.sx;p.y+=p.sy;p.sx*=.96;p.sy*=.96;p.life-=p.decay;if(p.life<=0){burst.splice(i,1);continue;}ctx.beginPath();ctx.arc(p.x,p.y,p.r*p.life,0,Math.PI*2);ctx.fillStyle='rgba(212,165,116,'+(p.a*p.life)+')';ctx.fill();}
       requestAnimationFrame(tick);}
-    function pulse(){spawnBurst(14);setTimeout(pulse,55000+Math.random()*12000);}
+    function pulse(){spawnBurst(reducedMotion?0:14);setTimeout(pulse,reducedMotion?70000:55000+Math.random()*12000);}
     window.addEventListener('scroll',()=>{scrollY=window.scrollY;},{passive:true});
     resize();makeBase();tick();pulse();
     window.addEventListener('resize',()=>{resize();makeBase();});
@@ -729,13 +730,6 @@ export default {
             return jsonResponse({ ok: true, migrated, failed });
         }
 
-        if (path === "/api/admin/debug" && method === "GET") {
-            const session = await getSession(request, env);
-            const adminRaw = env.ADMIN_EMAILS || env.ADMIN_EMAIL || null;
-            const isAdmin = !!(session?.email && isAdminEmail(env, session.email));
-            return jsonResponse({ session: session ? { email: session.email, name: session.name, sub: session.sub?.slice(0,8)+"…" } : null, isAdmin, adminEmailsConfigured: !!adminRaw, adminEmailsPreview: adminRaw ? adminRaw.slice(0,5)+"…("+adminRaw.length+" chars)" : "NOT SET", diagnosis: session?.email ? (isAdmin ? "✓ Admin confirmed" : "✗ "+session.email+" not in ADMIN_EMAILS") : "Not signed in" });
-        }
-
         if (path === "/admin" || path === "/admin/") {
             const session = await getSession(request, env);
             if (!session?.sub) return new Response(null, { status: 302, headers: { Location: "/auth/login?return=%2Fadmin%2F" } });
@@ -835,5 +829,6 @@ export default {
         return new Response(SILK_ROAD_HTML, { headers: { "Content-Type": "text/html" } });
     }
 };
+
 
 
